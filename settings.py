@@ -14,10 +14,6 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order):
     return y
 
 
-def rolling_rms(x, N):
-    return (pd.DataFrame(abs(x) ** 2).rolling(N).mean()) ** 0.5
-
-
 def window_rms(a, window_size):
     a2 = np.power(a, 2)
     window = np.ones(window_size) / float(window_size)
@@ -30,11 +26,11 @@ def get_one_hot(targets, nb_classes):
 
 
 pos = {
-    "rest": [1.65, 1.65],
-    "open": [3.3, 3.3],
-    "close": [0.0, 0.0],
-    "tripod": [1.65, 3.3],
-    "tripod_open": [3.3, 1.65]
+    "Rest": b'A',
+    "Close": b'B',
+    "Open": b'C',
+    "Tripod": b'D',
+    "Tripod Open": b'E'
 }
 
 pos_list = tuple(pos.values())
@@ -50,11 +46,11 @@ pos_rev = {
 pos_rev_list = tuple(pos_rev.values())
 
 imgs = (
-    "imgs/rest.jpg",
-    "imgs/open.jpg",
-    "imgs/close.jpg",
-    "imgs/tripod.jpg",
-    "imgs/tripod_open.jpg",
+    "imgs/rest.png",
+    "imgs/close.png",
+    "imgs/open.png",
+    "imgs/tripod.png",
+    "imgs/tripod_open.png",
 )
 
 hardware = {'daq': 'H0', 'mindrove': 'H1'}
