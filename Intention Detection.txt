@@ -1,0 +1,7 @@
+Intention Detection
+
+Initial data is collected on a new patient, which is then used to train a model. Once that model has been trained, it will be associated with the signature of the patient and should be saved with a name that reflects this for future sessions.
+
+Data can be visualized in the Analysis Tab, which can be accessed at the top left of the window.
+
+When collecting new data samples, DO NOT close the window, as this interrupts data collection.
