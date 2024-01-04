@@ -1,4 +1,0 @@
-name: Intention Detection Config
-    env: # Or as an environment variable
-      ID_EMAIL_USERNAME: ${{ secrets.ID_EMAIL_USERNAME }}
-      ID_EMAIL_PASSWORD: ${{ secrets.ID_EMAIL_PASSWORD }}
