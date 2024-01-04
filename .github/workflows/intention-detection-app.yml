@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+env: # Or as an environment variable
+  ID_EMAIL_USERNAME: ${{ secrets.ID_EMAIL_USERNAME }}
+  ID_EMAIL_PASSWORD: ${{ secrets.ID_EMAIL_PASSWORD }}
+
 jobs:
   build:
 
@@ -37,3 +41,8 @@ jobs:
     - name: Test with pytest
       run: |
         pytest
+
+    - name: Run Main Script
+      run:
+        python main.py
+    
