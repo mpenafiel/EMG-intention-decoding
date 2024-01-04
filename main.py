@@ -20,7 +20,7 @@ import joblib
 
 import emg_classification
 import settings
-from windows import createMain, createAnalysis, createPatientView, CheckBoxDialog
+from windows import createMain, createAnalysis, createPatientView, CheckBoxDialog, FeedbackWin
 
 
 # Some icons by Yusuke Kamiyamane. Licensed under a Creative Commons Attribution 3.0 License.
@@ -442,6 +442,7 @@ class PoseApp(QtWidgets.QMainWindow):
         helpMenu = menuBar.addMenu("Help")
         helpMenu.addAction(self.documentationAction)
         helpMenu.addAction(self.aboutAction)
+        helpMenu.addAction(self.feedbackAction)
 
     def _createActions(self):
         # Creating actions using the second constructor
@@ -453,6 +454,7 @@ class PoseApp(QtWidgets.QMainWindow):
         self.exitAction = QtGui.QAction("&Exit", self)
         self.documentationAction = QtGui.QAction("&Documentation", self)
         self.aboutAction = QtGui.QAction("&About", self)
+        self.feedbackAction = QtGui.QAction('Send &Feedback', self)
         self.newPromptAction = QtGui.QAction("&New Prompt...", self)
         self.randPromptAction = QtGui.QAction("&Random Prompt", self)
         self.randLenPromptAction = QtGui.QAction("Random &Length Prompt", self)
@@ -467,20 +469,26 @@ class PoseApp(QtWidgets.QMainWindow):
         self.clearDataAction.triggered.connect(self.clearData)
         self.clearModelAction.triggered.connect(self.clearModel)
         self.clearAllAction.triggered.connect(self.clearAll)
+        self.exitAction.triggered.connect(self.close)
+
+        # Connect Tools actions
         self.newPromptAction.triggered.connect(self.newPrompt)
         self.randPromptAction.triggered.connect(self.randPrompt)
         self.randLenPromptAction.triggered.connect(self.randLenPrompt)
         self.createTrainingAction.triggered.connect(self.trainingParameters)
         self.changeTimeAction.triggered.connect(self.changeTime)
+
+        # Connect Icon actions
         self.mainTab.prompt_icon.clicked.connect(self.newPrompt)
         self.mainTab.data_icon.clicked.connect(self.loadData)
         self.mainTab.model_icon.clicked.connect(self.loadModel)
         #  self.mainTab.port_icon.clicked.connect(self.newPrompt)
-        self.exitAction.triggered.connect(self.close)
 
         # Connect Help actions
         self.documentationAction.triggered.connect(emg_classification.documentation)
         self.aboutAction.triggered.connect(self.about)
+        self.feedbackAction.triggered.connect(self.send_feedback)
+
 
     def _createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -549,7 +557,7 @@ class PoseApp(QtWidgets.QMainWindow):
             self.mainTab.prompt_status.setText(f'{display}')
             self.train_reps = len(self.prompt)
         else:
-            message = 'User canceled'
+            message = 'User cancelled'
             self.statusbar.showMessage(message)
 
     def changeTime(self):
@@ -716,6 +724,45 @@ class PoseApp(QtWidgets.QMainWindow):
         # Logic for showing an 'about' dialog content goes here...
         message = "Collect EMG data from a patient and train a model to detect the intention behind a patient's actions"
         QtWidgets.QMessageBox.information(self, 'EMG intention detection', message)
+
+    def send_feedback(self):
+        from email.message import EmailMessage
+        import smtplib
+        import ssl
+        import os
+        dlg = FeedbackWin(self)
+
+        if dlg.exec():
+            name = dlg.name.text()
+
+            feedback = dlg.feedback.toPlainText()
+
+            # replace with
+            password = os.environ.get('ID_EMAIL_PASSWORD')
+
+            port = 465  # For SSL
+            smtp_server = "smtp.gmail.com"
+            email_sender = os.environ.get('ID_EMAIL_USERNAME')
+            email_receiver = os.environ.get('ID_EMAIL_USERNAME')
+
+            subject = f'Feedback from {name}'
+            body = feedback
+
+            em = EmailMessage()
+            em['From'] = email_sender
+            em['To'] = email_receiver
+            em['Subject'] = subject
+            em.set_content(body)
+
+            context = ssl.create_default_context()
+
+            with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
+                server.login(email_sender, password)
+                server.sendmail(email_sender, email_receiver, em.as_string())
+
+        else:
+            message = 'User cancelled'
+            self.statusbar.showMessage(message)
 
     def closeEvent(self, event):
         if self.board.is_prepared():
