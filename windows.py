@@ -286,7 +286,7 @@ class AnalysisUI(QtWidgets.QWidget):
         layout4 = QtWidgets.QVBoxLayout()
         self.cm = MplCanvas(self, width=5, height=4, dpi=100)
 
-        #layout4.addWidget(self.cm)
+        # layout4.addWidget(self.cm)
 
         stats = QtWidgets.QWidget()
         stats.setLayout(layout4)
@@ -556,3 +556,45 @@ class MainUi(QtWidgets.QWidget):
         layout.addWidget(self.connect, 5, 3)
 
         self.setLayout(layout)
+
+
+class FeedbackWin(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Send Feedback')
+
+        self.send_btn = QtWidgets.QPushButton('Send', self)
+        self.cancel_btn = QtWidgets.QPushButton('Cancel', self)
+
+        self.send_btn.clicked.connect(self.accept)
+        self.cancel_btn.clicked.connect(self.reject)
+
+        layout_button = QtWidgets.QHBoxLayout()
+        layout_button.addWidget(self.send_btn)
+        layout_button.addWidget(self.cancel_btn)
+
+        layout_button.setStretch(0, 0)
+        layout_button.setStretch(1, 0)
+
+        self.name_label = QtWidgets.QLabel('Name: ', self)
+        self.name = QtWidgets.QLineEdit(self)
+
+        self.fb_label = QtWidgets.QLabel('Feedback: ', self)
+        self.feedback = QtWidgets.QPlainTextEdit(self)
+
+        layout = QtWidgets.QGridLayout()
+        layout.addWidget(self.name_label, 0, 0)
+        layout.addWidget(self.name, 0, 1, 1, 2)
+        layout.addWidget(self.fb_label, 1, 0)
+        layout.addWidget(self.feedback, 2, 0, 2, 3)
+
+        layout_stack = QtWidgets.QVBoxLayout()
+
+        layout_stack.addLayout(layout)
+        layout_stack.addLayout(layout_button)
+
+        layout.setRowStretch(2, 1)
+
+        self.setLayout(layout_stack)
+
