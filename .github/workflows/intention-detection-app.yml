@@ -3,6 +3,9 @@
 
 name: Intention Detection
 
+env:
+    ID_EMAIL_USERNAME: ${{ secrets.ID_EMAIL_USERNAME }}
+    ID_EMAIL_PASSWORD: ${{ secrets.ID_EMAIL_PASSWORD }}
 on:
   push:
     branches: [ "master" ]
