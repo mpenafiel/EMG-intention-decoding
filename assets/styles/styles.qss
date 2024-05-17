@@ -1,0 +1,238 @@
+QMainWindow {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 lightslategray, stop: 1 slategray);
+    color: ghostwhite;
+}
+
+QPushButton[type="1"]{
+    background-color:  #3c4c69; /* qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 lightgray, stop: 1 lightslategray); */
+    border-style: outset;
+    border-width: 1px;
+    border-radius: 18px;
+    border-color: ghostwhite;
+    color: ghostwhite;
+    font-family: "TitilliumWeb";
+    font-size: 18px;
+    min-width: 5em;
+    padding: 6px;
+}
+QPushButton[type="1"]:hover {
+    background-color: lightslategray;
+    border-style: inset;
+}
+
+QPushButton[type="2"]{
+    background-color:  #3c4c69;
+    border-style: outset;
+    border-width: 1px;
+    border-radius: 14px;
+    border-color: ghostwhite;
+    color: ghostwhite;
+    font-family: "TitilliumWeb";
+    min-width: 5em;
+    padding: 6px;
+}
+QPushButton[type="2"]:hover {
+    background-color: lightslategray;
+    border-style: inset;
+}
+
+QPushButton[type="3"]{
+    background-color:  #d70000;
+    border-style: outset;
+    border-width: 1px;
+    border-radius: 14px;
+    border-color: ghostwhite;
+    color: ghostwhite;
+    font-family: "TitilliumWeb";
+    font-weight: bold;
+    min-width: 5em;
+    padding: 6px;
+}
+QPushButton[type="3"]:hover {
+    background-color: #d76464;
+    border-style: inset;
+}
+
+QLabel[type="1"] {
+    font-weight: bold;
+    color: #3c4c69;
+    font-family: "TitilliumWeb";
+}
+
+QLabel[type="2"] {
+    color: #3c4c69;
+    font-family: "TitilliumWeb";
+}
+
+QLabel[type="3"] { /* style for unused channels */
+    color: lightgray;
+    font-weight: bold;
+    font-family: "TitilliumWeb";
+}
+
+QLabel[type="4"] {
+    color: #3c4c69;
+    font-weight: bold;
+    font-family: "TitilliumWeb";
+}
+
+QLabel[type="5"] {
+    color: ghostwhite;
+    font-family: "TitilliumWeb";
+    font-weight: bold;
+    font: 36px;
+}
+
+QLabel[type="6"] {
+    color: ghostwhite;
+    font-family: "TitilliumWeb";
+    font-weight: semibold;
+    font: 16px;
+    padding: 36px;
+}
+
+QLabel[type="7"] {
+    color: ghostwhite;
+    font-family: "TitilliumWeb";
+    font-weight: semibold;
+    font: 12px;
+    padding: 36px;
+}
+
+QCheckBox [type='1']{
+    spacing: 5px;
+    font-weight: bold;
+    font-family: "TitilliumWeb";
+    color: #3c4c69;
+}
+
+QGroupBox {
+    background-color: #e9eaf0;
+    font-weight: bold;
+    font-family: "TitilliumWeb";
+    color: #3c4c69;
+}
+
+QProgressBar {
+    border: 2px solid grey;
+    border-radius: 5px;
+    text-align: center;
+    font-weight: bold;
+    color: #3c4c69;
+}
+
+QProgressBar::chunk {
+    background-color: #CD96CD;
+    width: 10px;
+    margin: 0.5px;
+}
+
+QRadioButton {
+    color: #3c4c69;
+}
+
+/* The tab widget frame */
+QTabWidget::pane { 
+    border-top: 2px solid slategray;
+    font-family: "TitilliumWeb";
+}
+
+QTabWidget::tab-bar {
+    left: 5px; /* move to the right by 5px */
+}
+
+/* Style the tab using the tab sub-control. Note that
+    it reads QTabBar _not_ QTabWidget */
+QTabBar::tab {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 lightslategray, stop: 1.0 slategray);
+    border: 2px solid #C4C4C3;
+    border-bottom-color: slategray; /* same as the pane color */
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    min-width: 8ex;
+    padding: 2px;
+}
+
+QTabBar::tab:selected, QTabBar::tab:hover {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #fafafa, stop: 0.4 #f4f4f4,
+                                stop: 0.5 #e7e7e7, stop: 1.0 #fafafa);
+}
+
+QTabBar::tab:selected {
+    border-color: #9B9B9B;
+    border-bottom-color: #C2C7CB; /* same as pane color */
+    color: #3c4c69;
+    font-weight: bold;
+}
+
+QTabBar::tab:!selected {
+    margin-top: 2px; /* make non-selected tabs look smaller */
+    color: ghostwhite;
+}
+
+QToolButton { /* all types of tool button */
+    border: 1px solid lightslategray;
+    border-radius: 4px;
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 #f6f7fa, stop: 1 #dadbde);
+                                      
+}
+
+QToolButton:pressed {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 lightslategray, stop: 1 slategray);
+}
+
+QToolButton:hover {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 lightslategray, stop: 1 slategray);
+}
+
+QComboBox {
+    border: 1px solid #e9eaf0;
+    border-radius: 18px;
+    padding: 1px 18px 1px 3px;
+    min-width: 6em;
+    font-family: "TitilliumWeb";
+}
+
+QComboBox:editable {
+    background: white;
+}
+
+QComboBox:!editable, QComboBox::drop-down:editable {
+     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 #E1E1E1, stop: 0.4 #DDDDDD,
+                                 stop: 0.5 #D8D8D8, stop: 1.0 #D3D3D3);
+}
+
+/* QComboBox gets the "on" state when the popup is open */
+QComboBox:!editable:on, QComboBox::drop-down:editable:on {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #D3D3D3, stop: 0.4 #D8D8D8,
+                                stop: 0.5 #DDDDDD, stop: 1.0 #E1E1E1);
+}
+
+QComboBox:on { /* shift the text when the popup opens */
+    padding-top: 3px;
+    padding-left: 4px;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 15px;
+
+    border-left-width: 1px;
+    border-left-color: darkgray;
+    border-left-style: solid; /* just a single line */
+    border-top-right-radius: 3px; /* same radius as the QComboBox */
+    border-bottom-right-radius: 3px;
+}
+
+QComboBox::down-arrow {
+    image: url(icons/dotdotdot.png);
+}

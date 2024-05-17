@@ -2,35 +2,81 @@
 from PyInstaller.utils.hooks import collect_all
 from PyInstaller.utils.hooks import copy_metadata
 
-datas = []
+block_cipher = None
+
+added_files = [
+                ('C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\.venv\\Lib\\site-packages\\mindrove\\lib\\BoardController.dll', '.'),
+                ('C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\.venv\\Lib\\site-packages\\mindrove\\lib\\DataHandler.dll', '.'),
+                ('C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\.venv\\Lib\\site-packages\\mindrove\\lib\\MindRoveBluetooth.dll', '.'),
+                ('C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\.venv\\Lib\\site-packages\\mindrove\\lib\\MLModule.dll', '.'),
+                ('C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\.venv\\Lib\\site-packages\\mindrove\\lib\\simpleble-c.dll', '.')
+              ]
+
 binaries = []
 hiddenimports = []
-datas += copy_metadata('nidaqmx')
 tmp_ret = collect_all('ml_dtypes')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+added_files += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('mindrove')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
+added_files += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=binaries,
-    datas=datas,
+    datas=added_files,
     hiddenimports=hiddenimports,
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
+    optimize=0,
 )
-pyz = PYZ(a.pure)
+
+a.datas += [
+                ("HoH EMG Hand Documentation Version 4.0.pdf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\docs\\HoH EMG Hand Documentation Version 4.0.pdf", "DATA"),
+                ("TitilliumWeb-Black.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-Black.ttf", "DATA"),
+                ("TitilliumWeb-Bold.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-Bold.ttf", "DATA"),
+                ("TitilliumWeb-BoldItalic.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-BoldItalic.ttf", "DATA"),
+                ("TitilliumWeb-ExtraLight.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-ExtraLight.ttf", "DATA"),
+                ("TitilliumWeb-ExtraLightItalic.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-ExtraLightItalic.ttf", "DATA"),
+                ("TitilliumWeb-Italic.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-Italic.ttf", "DATA"),
+                ("TitilliumWeb-Light.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-LightItalic.ttf", "DATA"),
+                ("TitilliumWeb-LightItalic.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-Regular.ttf", "DATA"),
+                ("TitilliumWeb-Regular.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-Regular.ttf", "DATA"),
+                ("TitilliumWeb-SemiBold.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-SemiBold.ttf", "DATA"),
+                ("TitilliumWeb-SemiBoldItalic.ttf", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\fonts\\TitilliumWeb-SemiBoldItalic.ttf", "DATA"),
+                ("data-transfer.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\icons\\data-transfer.png", "DATA"),
+                ("ethernet.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\icons\\ethernet.png", "DATA"),
+                ("time.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\icons\\time.png", "DATA"),
+                ("folder-open.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\icons\\folder-open.png", "DATA"),
+                ("table.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\icons\\table.png", "DATA"),
+                ("subject.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\icons\\subject.png", "DATA"),
+                ("open.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\imgs\\open.png", "DATA"),
+                ("close.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\imgs\\close.png", "DATA"),
+                ("tripod_open.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\imgs\\tripod_open.png", "DATA"),
+                ("tripod.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\imgs\\tripod.png", "DATA"),
+                ("bottom_open.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\imgs\\bottom_open.png", "DATA"),
+                ("bottom_close.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\imgs\\bottom_close.png", "DATA"),
+                ("rest_label.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\imgs\\rest_label.png", "DATA"),
+                ("demo.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\imgs\\demo.png", "DATA"),
+                ("tasks.png", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\imgs\\tasks.png", "DATA"),
+                ("demoMsg.txt", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\text\\demoMsg.txt", "DATA"),
+                ("gettingStarted.txt", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\text\\gettingStarted.txt", "DATA"),
+                ("mainInstructions.txt", "C:\\Users\\penafiel\\Documents\\intention_detection\\IntentionDetectionSystem\\V4\\assets\\text\\mainInstructions.txt", "DATA")
+               ]
+
+
+pyz = PYZ(a.pure, a.zipped_data,
+         cipher=block_cipher)
 
 exe = EXE(
     pyz,
     a.scripts,
-    [],
-    exclude_binaries=True,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    exclude_binaries=False,
     name='main',
     debug=False,
     bootloader_ignore_signals=False,
