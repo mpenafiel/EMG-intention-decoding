@@ -93,7 +93,7 @@ def plot_confusion_matrix(fig, ax, cm, classes,
 
 def documentation():
     # Open documentation about operation
-    webbrowser.open(config.resource_path("dev/assets/docs/HoH EMG Hand Documentation Version 4.0.pdf"))
+    webbrowser.open(config.resource_path("assets/docs/HoH EMG Hand Documentation Version 4.0.pdf"))
 
 # intersperse a list with a given value... i.e. 0 or rest
 def intersperse(lst, item):
