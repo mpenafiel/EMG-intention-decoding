@@ -76,7 +76,7 @@ class SessionData(QtWidgets.QDialog):
 
         self.subject_name.setReadOnly(True)
 
-        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/folder-open.png'))
+        icon = QtGui.QIcon(config.resource_path('assets/icons/folder-open.png'))
         self.open_subject_folder = QtWidgets.QToolButton()
         self.open_subject_folder.setIcon(icon)
         self.open_subject_folder.setAutoRaise(False)
@@ -129,7 +129,7 @@ class SessionModel(QtWidgets.QDialog):
 
         self.subject_name.setReadOnly(True)
 
-        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/folder-open.png'))
+        icon = QtGui.QIcon(config.resource_path('assets/icons/folder-open.png'))
         self.open_subject_folder = QtWidgets.QToolButton()
         self.open_subject_folder.setIcon(icon)
         self.open_subject_folder.setAutoRaise(False)
@@ -495,7 +495,7 @@ class ExampleWin(QtWidgets.QMainWindow):
         self.setWindowTitle("Getting Started")
         self.setFixedSize(900, 600)
 
-        id = QtGui.QFontDatabase.addApplicationFont(config.resource_path("dev/assets/fonts/TitilliumWeb-Bold.ttf"))
+        id = QtGui.QFontDatabase.addApplicationFont(config.resource_path("assets/fonts/TitilliumWeb-Bold.ttf"))
         families = QtGui.QFontDatabase.applicationFontFamilies(id)
 
         self.titleCard_title = QtWidgets.QLabel("Welcome to the Intention Detection System!", self)
@@ -503,7 +503,7 @@ class ExampleWin(QtWidgets.QMainWindow):
         self.titleCard_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.titleCard_title.setProperty('type', 5)
         
-        file = open(config.resource_path('dev/assets/text/gettingStarted.txt'))
+        file = open(config.resource_path('assets/text/gettingStarted.txt'))
         text = file.read()
         file.close()
 
@@ -536,7 +536,7 @@ class ExampleWin(QtWidgets.QMainWindow):
 
         self.task_label = QtWidgets.QLabel(self)
         self.task_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        tasksPixmap = QtGui.QPixmap(config.resource_path("dev/assets/imgs/tasks.png"))
+        tasksPixmap = QtGui.QPixmap(config.resource_path("assets/imgs/tasks.png"))
         self.task_label.setPixmap(tasksPixmap)  
 
         self.taskCard_layout = QtWidgets.QGridLayout()
@@ -551,7 +551,7 @@ class ExampleWin(QtWidgets.QMainWindow):
         self.demoCard_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.demoCard_title.setProperty('type', 5)
 
-        file = open(config.resource_path('dev/assets/text/demoMsg.txt'))
+        file = open(config.resource_path('assets/text/demoMsg.txt'))
         text = file.read()
         file.close()
         self.demo_description = QtWidgets.QLabel(text, self)
@@ -560,7 +560,7 @@ class ExampleWin(QtWidgets.QMainWindow):
 
         self.demo_label = QtWidgets.QLabel(self)
         self.demo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        demoPixmap = QtGui.QPixmap(config.resource_path("dev/assets/imgs/demo.png"))
+        demoPixmap = QtGui.QPixmap(config.resource_path("assets/imgs/demo.png"))
         self.demo_label.setPixmap(demoPixmap)
 
         self.demoCard_layout = QtWidgets.QGridLayout()
@@ -1096,7 +1096,7 @@ class MainUi(QtWidgets.QWidget):
         """Create the General page UI."""
         # Title label
         self.title_label = QtWidgets.QLabel('Intention Detection and Task Classification', self)
-        id = QtGui.QFontDatabase.addApplicationFont('dev/assets/fonts/TitilliumWeb-Bold.ttf')
+        id = QtGui.QFontDatabase.addApplicationFont('assets/fonts/TitilliumWeb-Bold.ttf')
         families = QtGui.QFontDatabase.applicationFontFamilies(id)
         self.title_label.setFont(QtGui.QFont(families[0], 48))
         self.title_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -1131,7 +1131,7 @@ class MainUi(QtWidgets.QWidget):
         self.interrupt.setHidden(True)
         self.interrupt.setProperty('type', 3)
         # Display Instructions
-        file = open(config.resource_path('dev/assets/text/mainInstructions.txt'))
+        file = open(config.resource_path('assets/text/mainInstructions.txt'))
         text = file.read()
         file.close()
         self.instruct = QtWidgets.QPlainTextEdit(self)
@@ -1191,7 +1191,7 @@ class MainUi(QtWidgets.QWidget):
         self.channels_frame.setLayout(layout_channels)
 
         # Status Labels
-        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/subject.png'))
+        icon = QtGui.QIcon(config.resource_path('assets/icons/subject.png'))
         self.subject_icon = QtWidgets.QToolButton()
         self.subject_icon.setIcon(icon)
         self.subject_icon.setAutoRaise(False)
@@ -1202,7 +1202,7 @@ class MainUi(QtWidgets.QWidget):
         self.subject_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.subject_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/table.png'))
+        icon = QtGui.QIcon(config.resource_path('assets/icons/table.png'))
         self.data_icon = QtWidgets.QToolButton()
         self.data_icon.setIcon(icon)
         self.data_icon.setAutoRaise(False)
@@ -1213,7 +1213,7 @@ class MainUi(QtWidgets.QWidget):
         self.data_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.data_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/folder-open.png'))
+        icon = QtGui.QIcon(config.resource_path('assets/icons/folder-open.png'))
         self.model_icon = QtWidgets.QToolButton()
         self.model_icon.setIcon(icon)
         self.model_icon.setAutoRaise(False)
@@ -1224,7 +1224,7 @@ class MainUi(QtWidgets.QWidget):
         self.model_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.model_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/time.png'))
+        icon = QtGui.QIcon(config.resource_path('assets/icons/time.png'))
         self.time_icon = QtWidgets.QToolButton()
         self.time_icon.setIcon(icon)
         self.time_icon.setAutoRaise(False)
@@ -1235,7 +1235,7 @@ class MainUi(QtWidgets.QWidget):
         self.time_interval_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.time_interval_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/data-transfer.png'))
+        icon = QtGui.QIcon(config.resource_path('assets/icons/data-transfer.png'))
                            
         self.mindrove_icon = QtWidgets.QToolButton()
         self.mindrove_icon.setIcon(icon)
@@ -1247,7 +1247,7 @@ class MainUi(QtWidgets.QWidget):
         self.mindrove_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.mindrove_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/ethernet.png'))
+        icon = QtGui.QIcon(config.resource_path('assets/icons/ethernet.png'))
         self.port_icon = QtWidgets.QToolButton()
         self.port_icon.setIcon(icon)
         self.port_icon.setAutoRaise(False)
