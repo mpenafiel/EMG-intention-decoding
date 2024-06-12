@@ -28,13 +28,13 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 imgs = (
-    resource_path("dev/assets/imgs/rest_label.png"),
-    resource_path("dev/assets/imgs/open.png"),
-    resource_path("dev/assets/imgs/close.png"),
-    resource_path("dev/assets/imgs/tripod_open.png"),
-    resource_path("dev/assets/imgs/tripod.png"),
-    resource_path("dev/assets/imgs/bottom_open.png"),
-    resource_path("dev/assets/imgs/bottom_close.png")
+    resource_path("assets/imgs/rest_label.png"),
+    resource_path("assets/imgs/open.png"),
+    resource_path("assets/imgs/close.png"),
+    resource_path("assets/imgs/tripod_open.png"),
+    resource_path("assets/imgs/tripod.png"),
+    resource_path("assets/imgs/bottom_open.png"),
+    resource_path("assets/imgs/bottom_close.png")
 )
 
 pos = {
@@ -49,7 +49,7 @@ pos = {
 
 # Create custom colormap and map the true label with the associated color
 cmap = mpl.cm.Spectral
-bounds = [0, 1, 2, 3, 4, 5, 6, 7]
+bounds = [0, 1, 2, 3, 4, 5, 6]
 norm = mpl.colors.BoundaryNorm(bounds, cmap.N, clip=True)
 
 colors_list = [cmap.__call__(norm(0)), 
@@ -57,8 +57,7 @@ colors_list = [cmap.__call__(norm(0)),
                cmap.__call__(norm(2)), 
                cmap.__call__(norm(3)), 
                cmap.__call__(norm(4)), 
-               cmap.__call__(norm(5)),
-               cmap.__call__(norm(6))]
+               cmap.__call__(norm(5))]
 cmap_discrete = np.array(object=colors_list, dtype=np.float64)
 
 def plot_confusion_matrix(fig, ax, cm, classes,
@@ -93,7 +92,7 @@ def plot_confusion_matrix(fig, ax, cm, classes,
 
 def documentation():
     # Open documentation about operation
-    webbrowser.open(resource_path("dev/assets/docs/IDSystem Documentation v0.4.2.pdf"))
+    webbrowser.open(resource_path("assets/docs/IDSystem Documentation v0.4.2.pdf"))
 
 # intersperse a list with a given value... i.e. 0 or rest
 def intersperse(lst, item):
