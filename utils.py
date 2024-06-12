@@ -29,13 +29,13 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 imgs = (
-    resource_path("assets/imgs/rest_label.png"),
-    resource_path("assets/imgs/open.png"),
-    resource_path("assets/imgs/close.png"),
-    resource_path("assets/imgs/tripod_open.png"),
-    resource_path("assets/imgs/tripod.png"),
-    resource_path("assets/imgs/bottom_open.png"),
-    resource_path("assets/imgs/bottom_close.png")
+    resource_path("dev/assets/imgs/rest_label.png"),
+    resource_path("dev/assets/imgs/open.png"),
+    resource_path("dev/assets/imgs/close.png"),
+    resource_path("dev/assets/imgs/tripod_open.png"),
+    resource_path("dev/assets/imgs/tripod.png"),
+    resource_path("dev/assets/imgs/bottom_open.png"),
+    resource_path("dev/assets/imgs/bottom_close.png")
 )
 
 pos = {
@@ -50,7 +50,7 @@ pos = {
 
 # Create custom colormap and map the true label with the associated color
 cmap = mpl.cm.Spectral
-bounds = [0, 1, 2, 3, 4, 5, 6]
+bounds = [0, 1, 2, 3, 4, 5, 6, 7]
 norm = mpl.colors.BoundaryNorm(bounds, cmap.N, clip=True)
 
 colors_list = [cmap.__call__(norm(0)), 
@@ -58,7 +58,8 @@ colors_list = [cmap.__call__(norm(0)),
                cmap.__call__(norm(2)), 
                cmap.__call__(norm(3)), 
                cmap.__call__(norm(4)), 
-               cmap.__call__(norm(5)),]
+               cmap.__call__(norm(5)),
+               cmap.__call__(norm(6))]
 cmap_discrete = np.array(object=colors_list, dtype=np.float64)
 
 def plot_confusion_matrix(fig, ax, cm, classes,
@@ -93,7 +94,7 @@ def plot_confusion_matrix(fig, ax, cm, classes,
 
 def documentation():
     # Open documentation about operation
-    webbrowser.open(config.resource_path("assets/docs/HoH EMG Hand Documentation Version 4.0.pdf"))
+    webbrowser.open(config.resource_path("dev/assets/docs/IDSystem Documentation v0.4.2.pdf"))
 
 # intersperse a list with a given value... i.e. 0 or rest
 def intersperse(lst, item):
@@ -119,3 +120,20 @@ def window_rms(a, window_size):
 def get_one_hot(targets, nb_classes):
     res = np.eye(nb_classes)[np.array(targets).reshape(-1)]
     return res.reshape(list(targets.shape) + [nb_classes])
+
+def perform_labels_windowing(label_examples, classes, window_size=50, size_non_overlap=10):
+    # Preallocate memory
+    tasks = np.max(label_examples)
+    print(f'Number of Tasks: {tasks}')
+    
+    formated_labels = np.zeros((0, tasks+1))
+    window_num = 0
+    examples = label_examples
+    while len(examples) > window_size:
+        window = examples[:window_size]
+        featured_label = get_one_hot(np.argmax(np.bincount(window)), classes)[:, np.newaxis]
+        formated_labels = np.append(formated_labels, np.array(featured_label).transpose(), axis=0)
+        examples = examples[size_non_overlap:] # slide view to the right by specified increment
+        window_num += 1
+    print(f'Number of Computed Windows: {window_num}')
+    return formated_labels

@@ -12,14 +12,14 @@ import pyqtgraph.opengl as gl
 import serial
 from keras.layers import Dense
 from keras.models import Sequential
-from mindrove.board_shim import BoardShim, MindRoveInputParams, BoardIds
+from mindrove.board_shim import BoardShim, MindRoveInputParams, BoardIds, MindRoveError
 from mindrove.data_filter import FilterTypes, DataFilter, NoiseTypes, AggOperations, DetrendOperations
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
-import scipy.fft
+from itertools import combinations
 from tensorflow import keras
 import tensorflow as tf
 from keras.optimizers import Adam
@@ -38,6 +38,8 @@ import windows
 
 # Some icons by Yusuke Kamiyamane. Licensed under a Creative Commons Attribution 3.0 License.
 # Some icons from freeicons.io
+
+VERSION = '0.5.0'
 
 myappid = utils.resource_path('IDSIcon.ico') # arbitrary string
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
@@ -116,9 +118,13 @@ class TimerWorker(QtCore.QObject):
             elif i != 0: # Inactive interval
                 timer = self.active_timer
             while timer: # Active interval
-                self.updateTimer.emit(timer)
-                time.sleep(1)
-                timer -= 1
+                if self.run_flag:
+                    self.updateTimer.emit(timer)
+                    
+                    time.sleep(1)
+                    timer -= 1
+                else:
+                    break
         self.finished.emit()
 
 
@@ -126,7 +132,7 @@ class CollectWorker(QtCore.QObject):
     finished = QtCore.pyqtSignal()
     updateImg = QtCore.pyqtSignal(int)
     data = QtCore.pyqtSignal(tuple)
-    error = QtCore.pyqtSignal()
+    error = QtCore.pyqtSignal(tuple)
     updateProgress = QtCore.pyqtSignal(float)
 
     def __init__(self, tasks, train_data, train_reps, board, scaler, active_time, inactive_time):
@@ -162,24 +168,18 @@ class CollectWorker(QtCore.QObject):
                     time.sleep(self.inactive_time)
                 self.board.stop_stream()
                 data = self.board.get_board_data()
+                print(data.shape)
                 
                 # Processing Data
                 gain = 1 # Previously used 12
                 RC = 0.045/1000 # Resolution converter to mV
-                channels = data[:9,:]*RC*gain #Take channels and scale EMG to mV (gain: 12X ?)
+                channels = data[:9,:]*RC*gain # Take channels and scale EMG to mV (gain: 12X ?)
                 channels_filtered = channels.copy()
+                high_pass_cutoff = 10.0
                 for channel in emg_channels:
                     DataFilter.detrend(channels_filtered[channel], detrend_operation=DetrendOperations.LINEAR)
-                    DataFilter.perform_highpass(channels_filtered[channel], sampling_rate=self.fs, cutoff=50.0, order=4, filter_type=FilterTypes.BUTTERWORTH, ripple=0)
+                    DataFilter.perform_highpass(channels_filtered[channel], sampling_rate=self.fs, cutoff=high_pass_cutoff, order=4, filter_type=FilterTypes.BUTTERWORTH, ripple=0)
                     DataFilter.remove_environmental_noise(channels_filtered[channel], sampling_rate=self.fs, noise_type=NoiseTypes.SIXTY)
-
-                # # Process and filter data using FFT
-                # frequencies = np.linspace(0, 500, num=channels.shape[1])
-                # fft = scipy.fft.fft(channels, axis=0, overwrite_x=False)
-                # fft_filt = np.transpose(fft)
-                # fft_filt[frequencies < 150] = 0
-                # fft_filt[frequencies > 350] = 0
-                # channels_filtered = scipy.fft.ifft(fft_filt, axis=0)
                 
                 channels[8, :] = k
                 channels_filtered[8, :] = k
@@ -204,9 +204,7 @@ class CollectWorker(QtCore.QObject):
             
             filtered = filtered.reset_index(drop=True)
             raw = raw.reset_index(drop=True)
-
-            filtered = pd.DataFrame(np.transpose(filt_w_task[0:8,:]),
-                                    columns=['CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6', 'CH7', 'CH8'])
+            
             smoothed = pd.DataFrame(columns=['CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6', 'CH7', 'CH8', 'Task'])
 
             for j in filtered.columns:
@@ -235,11 +233,21 @@ class CollectWorker(QtCore.QObject):
             self.updateImg.emit(-1)
             self.finished.emit()
 
-        except: # in future versions, include the error type and provide user a hint about steps to avoid it.
+        except ValueError: # in future versions, include the error type and provide user a hint about steps to avoid it.
             self.updateImg.emit(-1)
             self.board.release_session()
             self.finished.emit()
-            self.error.emit()
+            msg = 'Connection timeout occured. Unable to retrive data from MindRove. Verify it is turned on and connected'
+            error = (0, msg)
+            self.error.emit(error)
+        
+        except MindRoveError:
+            self.updateImg.emit(-1)
+            self.board.release_session()
+            self.finished.emit()
+            msg = 'Connection timeout occured. Unable to retrive data from MindRove. Verify it is turned on and connected'
+            error = (0, msg)
+            self.error.emit(error)
 
     def interrupt(self):
         self.run_flag = False
@@ -270,43 +278,56 @@ class TrainWorker(QtCore.QObject):
         self.train_data = train_data
         self.model = model
         self.scaler = scaler
+        self.NCC = 2 # NCC = Number of channels to combine
+        self.NC = 8 # Number of channels
+        self.NFPC = 7 # define the number of features per channel
         self.callbacks = IDSCallback(message_signal=self.emit_message_signal, epoch_signal=self.epoch_end_signal, batch_signal=self.batch_end_signal)
 
     def run(self):
         # Get channels while excluding task column and convert to numpy array
-        X = self.train_data.iloc[:, :len(self.train_data.columns) - 1].to_numpy() 
+        X = self.train_data.iloc[:, :- 1].to_numpy()
+        tasks = self.train_data.Task.astype(int).to_numpy()
+        examples = model_utils.format_examples(X)        
 
-        # Remove resting period from tasks
-        tasks = self.train_data.Task.loc[self.train_data.Task != 0]
-        tasks = tasks.astype(int).to_numpy()
+        # Prepare indices of each 2 channels combination
+        Indx = np.array(list(combinations(range(self.NC), self.NCC)))   # (28,2)
+        # Preallocate memory for number of features
+        feat = Indx.shape[0] * self.NFPC + self.NC * self.NFPC
 
-        # Calculate the number of classes, or tasks, being trained, while disregarding the rest phase
+        # Calculate the number of classes, or tasks, being trained, while including the rest phase
         classes = tasks.max() + 1
 
-        tasks_one_hot = utils.get_one_hot(tasks, classes)
+        labels = utils.perform_labels_windowing(tasks, classes)
 
         # Remove resting periods from channels
-        indices = np.nonzero(self.train_data.Task.astype(int))[0]
-        channels = X[indices]
-        tasks_one_hot = np.delete(tasks_one_hot, 0, axis=1) # Remove first column, which corresponds to rest phase
+        indices = np.argwhere(labels[:,0] == 0).flatten()
+        active_labels = labels[indices,1:]
+        active_examples = examples[indices]
 
-        # Redefine classes as classes - 1
-        classes = classes - 1
+        # indices = np.nonzero(self.train_data.Task.astype(int))[0]
+        # channels = X[indices]
+        # tasks_one_hot = np.delete(tasks_one_hot, 0, axis=1) # Remove first column, which corresponds to rest phase
+
+        if active_examples.shape[0] > active_labels.shape[0]:
+            active_examples = active_examples[:active_labels.shape[0],:]
+        elif active_examples.shape[0] < active_labels.shape[0]:
+            active_labels = active_labels[:active_examples.shape[0]]
 
         # Split data set into training and testing
-        X_train, X_test, y_train, y_test = train_test_split(channels, tasks_one_hot, test_size=0.30)
+        X_train, X_test, y_train, y_test = train_test_split(active_examples, active_labels, test_size=0.30)
 
         self.batch_count_signal.emit(int(X_train.shape[0]/model_utils.BATCH_SIZE))
 
         test_set = (X_test, y_test)
 
+        # Classes are defined by all 6 tasks plus rest
         if self.model is None:
             self.model = Sequential([
-                tf.keras.Input(shape=(8,)),
+                tf.keras.Input(shape=(feat,)),
                 Dense(250, activation='relu'),
                 Dense(64, activation='relu'),
                 Dense(units=32, activation='relu'),
-                Dense(units=classes, activation='softmax')
+                Dense(units=classes-1, activation='softmax')
             ])
 
         self.model.compile(loss='categorical_crossentropy',
@@ -320,10 +341,10 @@ class TrainWorker(QtCore.QObject):
         msg = 'Completing final tasks...'
         self.emit_message_signal.emit(msg)
 
-        predictions = self.model.predict(x=channels, batch_size=model_utils.BATCH_SIZE, verbose=0)
+        predictions = self.model.predict(x=active_examples, batch_size=model_utils.BATCH_SIZE, verbose=0)
 
         predicted_labels = np.argmax(predictions, axis=-1) + 1 # array of predicted labels
-        true_labels = np.argmax(tasks_one_hot, axis=-1)  + 1 # array of true labels
+        true_labels = np.argmax(active_labels, axis=-1) + 1 # array of true labels
 
         data = np.column_stack((true_labels, predicted_labels))  # first column [0]->train | second column [1]->predict
         parameters = (self.scaler, self.model)
@@ -340,12 +361,12 @@ class TrainWorker(QtCore.QObject):
         #         Should be at least 250.
 
         # Create the array of colors based on the true labels
-        test_labels = np.argmax(y_test, axis=-1)  + 1 # array of true labels
+        test_labels = np.argmax(y_test, axis=-1) + 1 # array of true labels
 
         colors = np.ndarray(shape=(len(test_labels), 4), dtype=np.float64) # Create N x 1 array
 
         for i in range(6):
-            label = i+1 # Tasks are mapped from 1 to 6
+            label = i + 1 # Tasks are mapped from 0 to 6
             colors[test_labels==label] = utils.cmap_discrete[i]
 
         tsne = np.column_stack((tsne3d, colors))
@@ -360,13 +381,13 @@ class TrainWorker(QtCore.QObject):
 
         cm = confusion_matrix(y_true=true_labels, y_pred=predicted_labels)
 
-        cm_wclass = (cm, classes)
+        cm_w_class = (cm, classes)
 
         self.histSignal.emit(history) # contain the history of the model, including loss and accuracy
         self.paramSignal.emit(parameters)  # tuple containing the fitted scaler and model
         self.dataSignal.emit(data)  # numpy 2-D array of poses
         self.tsneSignal.emit(tsne)
-        self.cmSignal.emit(cm_wclass)
+        self.cmSignal.emit(cm_w_class)
 
         self.finished.emit()
 
@@ -376,12 +397,13 @@ class TestWorker(QtCore.QObject):
     updateImg = QtCore.pyqtSignal(int)
     validateTask = QtCore.pyqtSignal(list)
     predictions = QtCore.pyqtSignal(np.ndarray)
+    error = QtCore.pyqtSignal(tuple)
 
-    def __init__(self, tasks, selected_channels, train_reps, model, scaler, board, serial_obj, active_time, inactive_time):
+    def __init__(self, tasks, selected_data, train_reps, model, scaler, board, serial_obj, active_time, inactive_time, fixed_mode):
         super().__init__()
 
         self.tasks = tasks
-        self.channels = selected_channels  # The selected channels feed into the model
+        self.channels = selected_data  # The selected channels feed into the model
         self.train_reps = train_reps
         self.model = model
         self.scaler = scaler
@@ -389,96 +411,116 @@ class TestWorker(QtCore.QObject):
         self.serial_obj = serial_obj
         self.active_time = active_time
         self.inactive_time = inactive_time
+        self.fixed_mode = fixed_mode
         # Constants
         self.fs = BoardShim.get_sampling_rate(BoardIds.MINDROVE_WIFI_BOARD.value)
         self.filter_type = FilterTypes.BUTTERWORTH
         self.ws = 50
 
     def test(self):
-        test_data = pd.DataFrame(columns=['CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6', 'CH7', 'CH8'])
-        for i in test_data.columns:
-            if i not in self.channels:
-                test_data.drop(columns=[i])
-
-        emg_channels = self.board.get_emg_channels(BoardIds.MINDROVE_WIFI_BOARD.value)
-        tasks = list()
-        true_tasks = list()
-
-        predicted_labels = np.ndarray(shape=(0,), dtype=np.int64)
-
-        for i in self.tasks:
-            start = time.time()
-            self.updateImg.emit(i)
-            
-            if i != 0: # Active Interval.. default is 3 seconds
-                byte_command = bytes('0', 'utf-8')
-                self.serial_obj.write(byte_command) # command to return home
-                self.board.start_stream()
-                time.sleep(self.active_time)
-                self.board.stop_stream()
-                data = self.board.get_board_data()
-                # Processing Data
-                gain = 1 # Previously used 12
-                RC = 0.045/1000 # Resolution converter to mV
-                channels = data[:8,:]*RC*gain #Take channels and scale EMG to mV (gain: 12X ?)
-                channels_filtered = channels.copy()
-                for channel in emg_channels:
-                    DataFilter.detrend(channels_filtered[channel], detrend_operation=DetrendOperations.LINEAR)
-                    DataFilter.perform_highpass(channels_filtered[channel], sampling_rate=self.fs, cutoff=50.0, order=4, filter_type=FilterTypes.BUTTERWORTH, ripple=0)
-                    DataFilter.remove_environmental_noise(channels_filtered[channel], sampling_rate=self.fs, noise_type=NoiseTypes.SIXTY)
-                
-                filtered = pd.DataFrame(np.transpose(channels_filtered[0:8, :]),
-                                        columns=['CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6', 'CH7', 'CH8'])
-                smoothed = pd.DataFrame(columns=['CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6', 'CH7', 'CH8'])
-
-                filtered = filtered.iloc[1000:, :]  # trim the first and last second of contraction
-
-                for j in filtered.columns:
-                    smoothed[j] = utils.window_rms(filtered[j], self.ws)
-
-                for j in smoothed.columns:  # Check which columns are not included, then drop...
-                    if j not in self.channels:
-                        smoothed.drop(columns=[j])
-                # should find a more efficient way going forward ^
-                # this is only applicable if channels are omitted from the training session
-
-                if self.scaler is None:
-                    self.scaler = MinMaxScaler() # Scale all values between 0 and 1
-                    X = self.scaler.fit_transform(smoothed) # Fit new data
-                else:
-                    X = self.scaler.transform(smoothed) # use pre-loaded weights to scale
-
-                Y = self.model.predict(X)
-
-                labels = np.argmax(Y, axis=-1)  # Array of predicted labels
-                predicted_labels = np.concatenate([predicted_labels, labels], dtype=np.int64)
-
-                predicted_label = np.bincount(labels).argmax() + 1
-                print(f'Predicted Task: {predicted_label}')
-
-                byte_command = bytes(str(predicted_label), 'utf-8')
-                self.serial_obj.write(byte_command)
-                time.sleep(self.active_time)
-
-                tasks.append(predicted_label)
-                true_tasks.append(i)
-
-                byte_command = bytes('0', 'utf-8')
-                self.serial_obj.write(byte_command) # Command to return home
-                end = time.time()
-            elif i == 0: #Inactive Interval
-                time.sleep(self.inactive_time)
-                end = time.time()
-            print(f'Computation time: {end-start}')
-
-        print(f'Predicted Tasks: {tasks}')
-        print(f'True Tasks: {true_tasks}')
-        self.updateImg.emit(-1)
-        self.predictions.emit(predicted_labels)
         try:
+            if self.channels is not None:
+                test_data = pd.DataFrame(columns=['CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6', 'CH7', 'CH8'])
+                for i in test_data.columns:
+                    if i not in self.channels:
+                        test_data.drop(columns=[i])
+
+            emg_channels = self.board.get_emg_channels(BoardIds.MINDROVE_WIFI_BOARD.value)
+            tasks = list()
+            true_tasks = list()
+
+            predicted_labels = np.ndarray(shape=(0,), dtype=np.int64)
+
+            for i in self.tasks:
+                if self.fixed_mode:
+                    self.updateImg.emit(i)
+
+                    # pseudo tasks are performed here
+                    if i != 0:
+                        byte_command = bytes('0', 'utf-8')
+                        self.serial_obj.write(byte_command) # Command to return home
+                        time.sleep(self.active_time)
+
+                        byte_command = bytes(str(i), 'utf-8')
+                        print(f'Predicted Task: {i}')
+                        self.serial_obj.write(byte_command)
+                        time.sleep(self.active_time)
+
+                        byte_command = bytes('0', 'utf-8')
+                        self.serial_obj.write(byte_command) # Command to return home
+                    elif i == 0:
+                        time.sleep(self.inactive_time)
+                else:
+                    start = time.time()
+                    self.updateImg.emit(i)
+                    
+                    if i != 0: # Active Interval.. default is 3 seconds
+                        print('Starting new task')
+                        byte_command = bytes('0', 'utf-8')
+                        self.serial_obj.write(byte_command) # Command to return home
+                        self.board.start_stream()
+                        time.sleep(self.active_time)
+                        self.board.stop_stream()
+                        data = self.board.get_board_data()
+                        print(f'Data Shape: {data.shape}')
+                        # Processing Data
+                        gain = 1 # Previously used 12
+                        RC = 0.045/1000 # Resolution converter to mV
+                        channels = data[:8,:]*RC*gain # Take channels and scale EMG to mV (gain: 12X ?)
+                        channels_filtered = channels.copy()
+                        for channel in emg_channels:
+                            DataFilter.detrend(channels_filtered[channel], detrend_operation=DetrendOperations.LINEAR)
+                            DataFilter.perform_highpass(channels_filtered[channel], sampling_rate=self.fs, cutoff=50.0, order=4, filter_type=FilterTypes.BUTTERWORTH, ripple=0)
+                            DataFilter.remove_environmental_noise(channels_filtered[channel], sampling_rate=self.fs, noise_type=NoiseTypes.SIXTY)
+
+                        X = channels_filtered[:8,:]
+
+                        examples = model_utils.format_examples(X)
+
+                        Y = self.model.predict(examples)
+
+                        labels = np.argmax(Y, axis=-1)  # Array of predicted labels
+
+                        predicted_labels = np.concatenate([predicted_labels, labels], dtype=np.int64)
+
+                        predicted_array = np.bincount(labels)
+                        print(f'Prediction Array: {predicted_array}')
+
+                        predicted_label = predicted_array.argmax() + 1
+
+                        print(f'Predicted Task: {predicted_label}')
+
+                        byte_command = bytes(str(predicted_label), 'utf-8')
+                        self.serial_obj.write(byte_command)
+                        time.sleep(self.active_time)
+
+                        tasks.append(predicted_label)
+                        true_tasks.append(i)
+
+                        byte_command = bytes('0', 'utf-8')
+                        self.serial_obj.write(byte_command) # Command to return home
+                        end = time.time()
+                    elif i == 0: #Inactive Interval
+                        self.board.start_stream()
+                        time.sleep(self.inactive_time)
+                        self.board.stop_stream()
+                        discard = self.board.get_board_data()
+                        end = time.time()
+                    print(f'Computation time: {end-start}')
+
+            print(f'Predicted Tasks: {tasks}')
+            print(f'True Tasks: {true_tasks}')
+            self.updateImg.emit(-1)
+            self.predictions.emit(predicted_labels)
+
             self.board.release_session()
-        except:
-            pass
+        except MindRoveError:
+            msg = 'Connection timeout occured. Unable to retrive data from MindRove. Verify it is turned on and connected.'
+            self.updateImg.emit(-1)
+            self.board.release_session()
+            self.finished.emit()
+            error = (0, msg)
+            self.error.emit(error)
         self.finished.emit()
 
     def run(self):
@@ -488,9 +530,9 @@ class TestWorker(QtCore.QObject):
             self.board.prepare_session()
             self.test()
 
-class PoseApp(QtWidgets.QMainWindow):
+class PoseApp(QtWidgets.QMainWindow): 
     train_data = None
-    selected_channels = None  # specify the selected channels for training
+    selected_data = None  # specify the selected channels and samples for training
 
     def __init__(self):
         # Call the Parent constructor
@@ -578,6 +620,15 @@ class PoseApp(QtWidgets.QMainWindow):
                             'CH7': self.analysisTab.CH7,
                             'CH8': self.analysisTab.CH8,
                             'Task': self.analysisTab.TASK}
+        
+        self.channel_task = {'CH1': self.analysisTab._ch1_task,
+                             'CH2': self.analysisTab._ch2_task,
+                             'CH3': self.analysisTab._ch3_task,
+                             'CH4': self.analysisTab._ch4_task,
+                             'CH5': self.analysisTab._ch5_task,
+                             'CH6': self.analysisTab._ch6_task,
+                             'CH7': self.analysisTab._ch7_task,
+                             'CH8': self.analysisTab._ch8_task,}
 
         self.channel_checkbox = {'CH1': (self.mainTab.ch1_main, self.analysisTab.ch1_check),
                                 'CH2': (self.mainTab.ch2_main, self.analysisTab.ch2_check),
@@ -590,6 +641,10 @@ class PoseApp(QtWidgets.QMainWindow):
 
         self.analysisTab.display_all.clicked.connect(self.display_all_channels)
         self.analysisTab.clear_all.clicked.connect(self.clear_channel_plots)
+
+        self.analysisTab.clear_shift.clicked.connect(self.clear_shift)
+        self.analysisTab.layer_task.stateChanged.connect(self.check_overlay_state)
+        self.analysisTab.set_shift.clicked.connect(self.set_shift)
 
         self.analysisTab.data_group.buttonClicked.connect(self.set_datatype)
         
@@ -607,6 +662,15 @@ class PoseApp(QtWidgets.QMainWindow):
         w = self.mainTab.task_img.width()
         h = self.mainTab.task_img.height()
         self.mainTab.task_img.setPixmap(self.pixmap.scaled(w,h, QtCore.Qt.AspectRatioMode.KeepAspectRatio))
+
+    def _updateViews(self, p1, p2):
+            ## view has resized; update auxiliary views to match
+            p2.setGeometry(p1.vb.sceneBoundingRect())
+
+            ## need to re-update linked axes since this was called
+            ## incorrectly while views had different shapes.
+            ## (probably this should be handled in ViewBox.resizeEvent)
+            p2.linkedViewChanged(p1.vb, p2.XAxis)
 
     def _createActions(self):
         # Creating actions using the second constructor
@@ -661,6 +725,7 @@ class PoseApp(QtWidgets.QMainWindow):
         self.mainTab.data_icon.clicked.connect(self.load_data)
         self.mainTab.model_icon.clicked.connect(self.load_model)
         self.mainTab.time_icon.clicked.connect(self.change_time)
+        self.mainTab.mindrove_icon.clicked.connect(self.verify_mindrove_status)
 
         # Connect Help actions
         self.documentationAction.triggered.connect(utils.documentation)
@@ -718,9 +783,31 @@ class PoseApp(QtWidgets.QMainWindow):
         self.statusbar.addPermanentWidget(self.connection_status)
 
     def about(self):
-        # Logic for showing an 'about' dialog content goes here...
-        message = "Collect sEMG from a patient and train a model to detect the intention behind a patient's actions. Afterwards, the model can be used to train the patient."
-        QtWidgets.QMessageBox.information(self, 'EMG intention detection', message)
+        message = f'Version: {VERSION}'
+        QtWidgets.QMessageBox.information(self, 'Intention Detection System', message)
+
+    def check_overlay_state(self):
+        if self.analysisTab.layer_task.isChecked():
+            task = self.train_data.Task
+            t2 = (task.index / self.fs).to_numpy().flatten()
+
+            for channel_name in self.train_data.iloc[:,:-1]:
+                channel = self.channel_plots.get(channel_name)
+                channel.showAxis('right', show=True)
+                p1 = channel.getPlotItem()  # gets the plot item from the plot widget
+                p2 = self.channel_task.get(channel_name) # get the viewbox module
+                self._updateViews(p1, p2)
+                p1.vb.sigResized.connect(lambda: self._updateViews(p1, p2))
+
+                p2.addItem(pg.PlotCurveItem(x= t2, y=task.to_numpy().flatten(), pen='r'))
+
+        else:
+            for channel_name in self.train_data.iloc[:,:-1]:
+                channel = self.channel_plots.get(channel_name)
+                channel.showAxis('right', show=False)
+                p1 = channel.getPlotItem()  # gets the plot item from the plot widget
+                p2 = self.channel_task.get(channel_name) # get the viewbox module
+                p2.clear()
 
     def clear_all(self):
         self.clear_data()
@@ -733,19 +820,37 @@ class PoseApp(QtWidgets.QMainWindow):
         self.analysisTab.table.setModel(None)
         self.clear_all_plots()
 
+        # Reset buttons
         for channel_name in self.channel_checkbox.values():
             channel_name[0].setEnabled(False)
             channel_name[0].setChecked(False)
             channel_name[1].setEnabled(False)
             channel_name[1].setChecked(False)
 
+        self.analysisTab.display_all.setEnabled(False)
+        self.analysisTab.clear_all.setEnabled(False)
+
+        self.analysisTab.layer_task.setEnabled(False)
+        self.analysisTab.shift.setEnabled(False)
+        self.analysisTab.clear_shift.setEnabled(False)
+        self.analysisTab.set_shift.setEnabled(False)
+        self.analysisTab.total_samples.setText('Total Samples: 0')
+        self.analysisTab.down_samples.setText('Downsampled: 0')
+        self.analysisTab.layer_task.setChecked(False)
+
         self.analysisTab.raw.setEnabled(False)
+        self.analysisTab.filt.setEnabled(False)
         self.analysisTab.rms.setEnabled(False)
+        self.analysisTab.norm.setEnabled(False)
 
     def clear_all_plots(self):
         plots = self.channel_plots.values()
-        for plot_item in plots:
-            plot_item.clear()
+        viewboxes = self.channel_task.values()
+        for plot_widget in plots:
+            plot_widget.clear()
+            plot_widget.showAxis('right', show=False)
+        for viewbox in viewboxes:
+            viewbox.clear()            
 
     def clear_channel_plots(self):
         for channel in self.channel_checkbox.values():
@@ -761,6 +866,12 @@ class PoseApp(QtWidgets.QMainWindow):
         self.model = None
         self.mainTab.model_status.clear()
         self.mainTab.model_status.setToolTip(str())
+    
+    def clear_shift(self):
+        self.selected_data = self.train_data
+        self.analysisTab.shift.setValue(0)
+        self.analysisTab.down_samples.setText(f'Downsampled: {int(self.analysisTab.shift.value())} samples')
+        self.display_data(self.selected_data)
 
     def reset_task_instances_ui(self):
         self.mainTab.task_open.setText(str(0)) # set all values to 0 before setting new values
@@ -803,8 +914,6 @@ class PoseApp(QtWidgets.QMainWindow):
             
             self.tasks = [utils.Task.REST.value] + utils.intersperse(tasks, utils.Task.REST.value) # add a rest phase inbetween each task
             self.train_reps = len(self.tasks)
-
-            print(type(self.tasks), self.tasks)
             self.reset_task_instances_ui()
         else:
             message = 'User cancelled'
@@ -943,9 +1052,12 @@ class PoseApp(QtWidgets.QMainWindow):
                 self.inactive_time = self.active_time
                 self.mainTab.time_interval.setText(f'Active/Inactive: {self.active_time}')
 
-    def emit_error_message(self):
-        message = 'Connection timeout has occurred. Make sure the MindRove is turned on and connected.'
-        QtWidgets.QMessageBox.warning(self, 'Warning', message)
+    def emit_error_message(self, event):
+        error_type = event[0]
+        msg = event[1]
+        if error_type == 0:
+            self.mainTab.mindrove_status.setText("Not Connected")
+        QtWidgets.QMessageBox.warning(self, 'Warning', msg)
 
     def example_task_sequence(self):
         self.helpWin = windows.ExampleWin(self)
@@ -977,7 +1089,7 @@ class PoseApp(QtWidgets.QMainWindow):
             if fname:
                 self.train_data = pd.read_csv(fname)
                 self.data_path = fname
-                self.selected_channels = self.train_data
+                self.selected_data = self.train_data
                 message = f'{fname} successfully uploaded!'
                 self.mainTab.data_status.setToolTip(str(fname))
                 file_name = os.path.basename(fname)
@@ -988,6 +1100,13 @@ class PoseApp(QtWidgets.QMainWindow):
                 self.analysisTab.rms.setEnabled(True)
                 self.analysisTab.norm.setEnabled(True)
                 self.analysisTab.norm.setChecked(True)  # default display is normalized data
+                # Display Shift Functions
+                self.analysisTab.clear_shift.setEnabled(True)
+                self.analysisTab.set_shift.setEnabled(True)
+                self.analysisTab.layer_task.setEnabled(True)
+                self.analysisTab.shift.setEnabled(True)
+                self.analysisTab.total_samples.setText(f'Total Samples: {self.train_data.shape[0]}')
+
                 print(f"Train Data Shape: {self.train_data.shape}")
                 self.display_data(self.train_data)
             else:
@@ -1024,7 +1143,7 @@ class PoseApp(QtWidgets.QMainWindow):
                     channel_analysis.setEnabled(True)
                     channel_analysis.setChecked(True)
 
-                self.selected_channels = pd.DataFrame(columns=['CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6', 'CH7', 'CH8'])
+                self.selected_data = pd.DataFrame(columns=['CH1', 'CH2', 'CH3', 'CH4', 'CH5', 'CH6', 'CH7', 'CH8'])
             else:
                 message = 'User Cancelled'
                 self.statusbar.showMessage(message, 3000)
@@ -1073,10 +1192,10 @@ class PoseApp(QtWidgets.QMainWindow):
             checkbox.setChecked(True)
         self.update_plot(checkbox)
 
-        self.selected_channels = self.train_data  # create a copy of the original data
+        self.selected_data = self.train_data  # create a copy of the original data
         for key, value in self.channel_checkbox.items():
             if not value[0].isChecked():
-                self.selected_channels = self.selected_channels.drop(columns=[key])
+                self.selected_data = self.selected_data.drop(columns=[key])
 
     def update_channels_from_analysis_tab(self, id_):
         checkbox = self.mainTab.check_group.button(id_)
@@ -1089,20 +1208,29 @@ class PoseApp(QtWidgets.QMainWindow):
         plot = self.channel_plots.get(channel_name)
         self.update_plot(checkbox)
 
-        self.selected_channels = self.train_data  # create a copy of the original data
+        self.selected_data = self.train_data  # create a copy of the original data
         for key, value in self.channel_checkbox.items():
             if not value[1].isChecked():
-                self.selected_channels = self.selected_channels.drop(columns=[key])
+                self.selected_data = self.selected_data.drop(columns=[key])
 
     def display_data(self, data):
         self.clear_all_plots()
-        t2 = data.index / self.fs
+        t2 = (data.index / self.fs).to_numpy().flatten()
+        task = data.Task                
 
         for count, channel_name in enumerate(data):
             channel = self.channel_plots.get(channel_name)  # gets the plot
-            channel.plot(t2, data[channel_name].to_numpy())
+            channel.plot(x = t2, y = data[channel_name].to_numpy())
 
             if channel_name != 'Task':  # ignore the channel containing pose
+                if self.analysisTab.layer_task.isChecked():
+                    channel.showAxis('right', show=True)
+                    p1 = channel.getPlotItem()  # gets the plot item from the plot widget
+                    p2 = self.channel_task.get(channel_name) # get the viewbox module
+                    self._updateViews(p1, p2)
+                    p1.vb.sigResized.connect(lambda: self._updateViews(p1, p2))
+                    p2.addItem(pg.PlotCurveItem(x= t2, y=task.to_numpy().flatten(), pen='r'))
+
                 channel_check = self.channel_checkbox.get(channel_name)
                 channel_check[0].setEnabled(True)
                 channel_check[0].setChecked(True)
@@ -1151,7 +1279,7 @@ class PoseApp(QtWidgets.QMainWindow):
         # Event is an Nx6 matrix where columns 1-3 are the spatial coordinates and columns 4-6 are the RGB values of the point
         tsne3d = event[:,:3]
         colors = event[:,3:]
-        sp = gl.GLScatterPlotItem(pos=tsne3d, size=0.25, color=colors, pxMode=False)
+        sp = gl.GLScatterPlotItem(pos=tsne3d, color=colors, size=0.25, pxMode=False)
         self.analysisTab.t_sne3d.addItem(sp)
 
     def set_datatype(self):
@@ -1166,7 +1294,7 @@ class PoseApp(QtWidgets.QMainWindow):
                 message = 'Unable to display rms data'
                 QtWidgets.QMessageBox.information(self, 'Help', message)
             else:
-                self.displayData(self.rms_data)
+                self.display_data(self.rms_data)
         elif button == self.analysisTab.raw:
             if self.train_data is None:  # raise error if no data is present
                 message = 'No data present, collect or load data to display plots'
@@ -1177,7 +1305,7 @@ class PoseApp(QtWidgets.QMainWindow):
                 message = 'Unable to display raw data'
                 QtWidgets.QMessageBox.information(self, 'Help', message)
             else:
-                self.displayData(self.raw_data)
+                self.display_data(self.raw_data)
         elif button == self.analysisTab.filt:
             if self.train_data is None:  # raise error if no data is present
                 message = 'No data present, collect or load data to display plots'
@@ -1192,28 +1320,45 @@ class PoseApp(QtWidgets.QMainWindow):
                 message = 'Unable to display filtered data'
                 QtWidgets.QMessageBox.information(self, 'Help', message)
             else:
-                self.displayData(self.filt_data)
+                self.display_data(self.filt_data)
         if button == self.analysisTab.norm:
             if self.train_data is None:  # raise error if no data is present
                 message = 'No data present, collect or load data to display plots'
                 QtWidgets.QMessageBox.information(self, 'Help', message)
                 button.setChecked(False)
             else:
-                self.displayData(self.train_data)
+                self.display_data(self.norm_data)
+    
+    def set_shift(self):
+        data = self.train_data  # create a copy of the original data
+        for key, value in self.channel_checkbox.items():
+            if not value[1].isChecked() or not value[0].isChecked():
+                data = data.drop(columns=[key])
+
+        shift = int(self.analysisTab.shift.value() * self.fs) # Total number of samples to shift
+
+        self.selected_data = data.iloc[shift:, :-1]
+        self.selected_data = self.selected_data.reset_index(drop=True)
+        tasks = data.iloc[:-shift, -1]
+        tasks = tasks.reset_index(drop=True)
+        self.selected_data = self.selected_data.assign(Task = tasks)
+
+        self.analysisTab.down_samples.setText(f'Downsampled: {shift} samples')
+        self.display_data(self.selected_data)
 
     def data_prediction(self, event):
-        brush = pg.mkBrush(color=(255, 0, 0))
+        # brush = pg.mkBrush(color=(255, 0, 0))
 
-        indices = self.train_data[self.train_data.Task != 0]
+        # indices = self.train_data[self.train_data.Task != 0]
 
-        t = indices.index / self.fs  # this only occurs when self.train_data is a dataframe
+        # t = indices.index / self.fs  # this only occurs when self.train_data is a dataframe
 
         task_train = event[:, 0]  # train data
         task_predict = event[:, 1]  # train data
         k = accuracy_score(task_predict, task_train)
         title = "Results using Deep Learning" "\n Accuracy: " + str(k * 100) + "%"
-        self.analysisTab.TASK.plot(t, task_predict, pen=None, symbol='o', symbolPen=None, symbolBrush=brush,
-                                   symbolSize=1)
+        # self.analysisTab.TASK.plot(t, task_predict, pen=None, symbol='o', symbolPen=None, symbolBrush=brush,
+        #                            symbolSize=1)
         self.analysisTab.TASK.setTitle(title)     
 
     def patient_predictions(self, event):
@@ -1233,8 +1378,9 @@ class PoseApp(QtWidgets.QMainWindow):
         self.raw_data = event[0]
         self.filt_data = event[1]
         self.rms_data = event[2]
-        self.train_data = event[3]
-        self.selected_channels = self.train_data
+        self.norm_data = event[3]
+        self.train_data = self.filt_data
+        self.selected_data = self.train_data
 
         while True:
             dlg = windows.SessionData(self)
@@ -1255,6 +1401,13 @@ class PoseApp(QtWidgets.QMainWindow):
                     self.rms_data.to_csv(fpath_rms, index=False)
                     self.train_data.to_csv(fpath, index=False)
 
+                    # Display Shift Functions
+                    self.analysisTab.clear_shift.setEnabled(True)
+                    self.analysisTab.set_shift.setEnabled(True)
+                    self.analysisTab.layer_task.setEnabled(True)
+                    self.analysisTab.shift.setEnabled(True)
+                    self.analysisTab.total_samples.setText(f'Total Samples: {self.train_data.shape[0]}')
+
                     # Update GUI
                     message = f'Successfully collected data and saved to {fpath}!'
                     file_name = os.path.basename(fpath)
@@ -1267,7 +1420,7 @@ class PoseApp(QtWidgets.QMainWindow):
                     self.analysisTab.rms.setEnabled(True)
                     self.analysisTab.norm.setEnabled(True)
                     self.analysisTab.norm.setChecked(True)  # default display is noramlized rms data
-                    self.displayData(self.train_data)
+                    self.display_data(self.train_data)
                     break
                 else:
                     message = 'Open or create a subject folder to save data to'
@@ -1451,6 +1604,29 @@ class PoseApp(QtWidgets.QMainWindow):
         text = f'Elapsed time: {min} m, {s} s, {ms} ms'
         self.trainingDlg.elapsed_time.setText(text)
 
+    def verify_mindrove_status(self):
+        try:
+            self.board.prepare_session()
+            self.board.start_stream()
+            time.sleep(0.5)
+            self.board.stop_stream()
+            data = self.board.get_board_data()
+            self.board.release_session()
+            if data.shape[1] == 0:
+                raise ValueError
+            else:
+                self.mainTab.mindrove_status.setText('Verified')
+        except ValueError:
+            id_ = 0
+            msg = 'Connection timeout occured. Unable to connect to MindRove'
+            event = (id_, msg)
+            self.emit_error_message(event)
+        except MindRoveError:
+            id_ = 0
+            msg = 'Connection timeout occured. Unable to connect to MindRove'
+            event = (id_, msg)
+            self.emit_error_message(event)
+
     def begin_collecting_data(self):
         # Create QThread objects
         self.collectThread = QtCore.QThread()
@@ -1460,13 +1636,13 @@ class PoseApp(QtWidgets.QMainWindow):
         self.collectWorker = CollectWorker(self.tasks, self.train_data, self.train_reps, self.board, self.scaler, self.active_time, self.inactive_time)
         self.countdownWorker = CountdownWorker(5)  # countdown of five
 
-        self.timerWorker = TimerWorker(self.active_time, self.inactive_time, self.tasks)
-        self.timerThread = QtCore.QThread()
+        # self.timerWorker = TimerWorker(self.active_time, self.inactive_time, self.tasks)
+        # self.timerThread = QtCore.QThread()
 
         # Move workers to the threads
         self.collectWorker.moveToThread(self.collectThread)
         self.countdownWorker.moveToThread(self.countdownThread)
-        self.timerWorker.moveToThread(self.timerThread)
+        # self.timerWorker.moveToThread(self.timerThread)
         # Connect signals and slots
         self.collectThread.started.connect(self.collectWorker.run)
         self.collectWorker.finished.connect(self.collectThread.quit)
@@ -1479,7 +1655,7 @@ class PoseApp(QtWidgets.QMainWindow):
 
         self.countdownThread.started.connect(self.countdownWorker.run)
         self.countdownWorker.finished.connect(self.collectThread.start)
-        self.countdownWorker.finished.connect(self.timerThread.start)
+        # self.countdownWorker.finished.connect(self.timerThread.start)
         self.countdownWorker.finished.connect(self.countdownThread.quit)
         self.countdownWorker.finished.connect(self.countdownWorker.deleteLater)
         self.countdownThread.finished.connect(self.countdownThread.deleteLater)
@@ -1494,16 +1670,16 @@ class PoseApp(QtWidgets.QMainWindow):
         )
         self.countdownWorker.updateTime.connect(self.time_progress)
 
-        # Link timer thread with the collect thread
-        self.timerThread.started.connect(self.timerWorker.run)
-        self.timerWorker.finished.connect(self.timerThread.quit)
-        self.timerWorker.finished.connect(self.timerWorker.deleteLater)
-        self.timerThread.finished.connect(self.timerThread.deleteLater)
-        self.timerThread.finished.connect(
-            lambda: self.mainTab.timer_label.clear()
-        )
+        # Link timer thread with the collect thread via the collectWorker
+        # self.timerThread.started.connect(self.timerWorker.run)
+        # self.timerWorker.finished.connect(self.timerThread.quit)
+        # self.timerWorker.finished.connect(self.timerWorker.deleteLater)
+        # self.timerWorker.finished.connect(self.timerThread.deleteLater)
+        # self.timerWorker.finished.connect(
+        #     lambda: self.mainTab.timer_label.clear()
+        # )
         
-        self.timerWorker.updateTimer.connect(self.update_timer)
+        # self.timerWorker.updateTimer.connect(self.update_timer)
         # Start the thread
         if len(self.tasks) > 0:
             self.countdownThread.start()
@@ -1533,13 +1709,16 @@ class PoseApp(QtWidgets.QMainWindow):
         self.collectThread.finished.connect(
             lambda: self.mainTab.title_label.setVisible(True)
         )
+        # self.collectThread.finished.connect(
+        #     lambda: self.timerWorker.interrupt()
+        # )
 
     def begin_training_data(self):
         # Create QThread objects
         self.trainThread = QtCore.QThread()
 
         # Create worker objects
-        self.trainWorker = TrainWorker(self.selected_channels, self.model, self.scaler)  # specify the channels to use to train
+        self.trainWorker = TrainWorker(self.selected_data, self.model, self.scaler)  # specify the channels to use to train
 
         # Move workers to the threads
         self.trainWorker.moveToThread(self.trainThread)
@@ -1573,6 +1752,7 @@ class PoseApp(QtWidgets.QMainWindow):
             self.start_training_time = time.time()
             self.trainThread.start()
             self.trainingDlg = windows.TrainingDialog(self)
+            self.trainingDlg.message.setText('Performing Feature Extraction')
 
             # Reset tasks
             self.trainThread.finished.connect(
@@ -1595,69 +1775,81 @@ class PoseApp(QtWidgets.QMainWindow):
 
         if self.serial_obj is not None:
             # Create worker objects
-            # Must use the selected channels after training
-            selected_channels = list(self.selected_channels)
-            if 'Task' in selected_channels:
-                selected_channels.remove('Task')
-            self.testWorker = TestWorker(self.tasks, selected_channels, self.train_reps,
-                                         self.model, self.scaler, self.board, self.serial_obj,
-                                         self.active_time, self.inactive_time)
-            self.countdownWorker = CountdownWorker(5)
-            # Move workers to the threads
-            self.testWorker.moveToThread(self.testThread)
-            self.countdownWorker.moveToThread(self.countdownThread)
-            # Connect signals and slots
-            self.testThread.started.connect(self.testWorker.run)
-            self.testWorker.finished.connect(self.testThread.quit)
-            self.testWorker.finished.connect(self.testWorker.deleteLater)
-            self.testThread.finished.connect(self.testThread.deleteLater)
-            self.testWorker.updateImg.connect(self.update_img)
-            self.testWorker.predictions.connect(self.patient_predictions)
-
-            self.countdownThread.started.connect(self.countdownWorker.run)
-            self.countdownWorker.finished.connect(self.testThread.start)
-            self.countdownWorker.finished.connect(self.countdownThread.quit)
-            self.countdownWorker.finished.connect(self.countdownWorker.deleteLater)
-            self.countdownThread.finished.connect(self.countdownThread.deleteLater)
-            self.countdownThread.finished.connect(
-                lambda: self.mainTab.countdown_label.clear()
-            )
-            self.countdownThread.finished.connect(
-                lambda: self.mainTab.title_label.setHidden(True)
-            )
-
-            self.countdownWorker.updateTime.connect(self.time_progress)
-
-            # Start the thread
-            if self.model is None:
-                message = 'Cannot test a non-existent model'
-                QtWidgets.QMessageBox.warning(self, 'Help', message)
-
-            elif len(self.tasks) == 0:
-                message = 'Insert a task sequence, found under "Tools", to test model'
-                QtWidgets.QMessageBox.warning(self, 'Help', message)
+            # Must use the selected channels after training | add some sort of flag if loading a model without training further
+            if self.selected_data is not None:
+                selected_data = list(self.selected_data)
+                if 'Task' in selected_data:
+                    selected_data.remove('Task')
             else:
-                self.countdownThread.start()
-                self.mainTab.collect.setEnabled(False)
-                self.mainTab.train.setEnabled(False)
-                self.mainTab.test.setEnabled(False)
+                selected_data = self.selected_data
+            
+            dlg = windows.TestingDialog(self)
 
-                # Reset tasks
-                self.testThread.finished.connect(
-                    lambda: self.mainTab.collect.setEnabled(True)
+            if dlg.exec():
+                active_time = dlg.active_time.value()
+                inactive_time = dlg.inactive_time.value()
+                fixed_mode = dlg.fixed_mode.isChecked()
+
+                self.testWorker = TestWorker(self.tasks, selected_data, self.train_reps,
+                                            self.model, self.scaler, self.board, self.serial_obj,
+                                            active_time, inactive_time, fixed_mode=fixed_mode)
+                self.countdownWorker = CountdownWorker(5)
+                # Move workers to the threads
+                self.testWorker.moveToThread(self.testThread)
+                self.countdownWorker.moveToThread(self.countdownThread)
+                # Connect signals and slots
+                self.testThread.started.connect(self.testWorker.run)
+                self.testWorker.finished.connect(self.testThread.quit)
+                self.testWorker.finished.connect(self.testWorker.deleteLater)
+                self.testThread.finished.connect(self.testThread.deleteLater)
+                self.testWorker.updateImg.connect(self.update_img)
+                self.testWorker.predictions.connect(self.patient_predictions)
+                self.testWorker.error.connect(self.emit_error_message)
+
+                self.countdownThread.started.connect(self.countdownWorker.run)
+                self.countdownWorker.finished.connect(self.testThread.start)
+                self.countdownWorker.finished.connect(self.countdownThread.quit)
+                self.countdownWorker.finished.connect(self.countdownWorker.deleteLater)
+                self.countdownThread.finished.connect(self.countdownThread.deleteLater)
+                self.countdownThread.finished.connect(
+                    lambda: self.mainTab.countdown_label.clear()
                 )
-                self.testThread.finished.connect(
-                    lambda: self.mainTab.train.setEnabled(True)
+                self.countdownThread.finished.connect(
+                    lambda: self.mainTab.title_label.setHidden(True)
                 )
-                self.testThread.finished.connect(
-                    lambda: self.mainTab.test.setEnabled(True)
-                )
-                self.testThread.finished.connect(
-                    lambda: self.mainTab.detection_label.clear()
-                )
-                self.testThread.finished.connect(
-                    lambda: self.mainTab.title_label.setVisible(True)
-                )
+
+                self.countdownWorker.updateTime.connect(self.time_progress)
+
+                # Start the thread
+                if self.model is None:
+                    message = 'Cannot test a non-existent model'
+                    QtWidgets.QMessageBox.warning(self, 'Help', message)
+
+                elif len(self.tasks) == 0:
+                    message = 'Insert a task sequence, found under "Tools", to test model'
+                    QtWidgets.QMessageBox.warning(self, 'Help', message)
+                else:
+                    self.countdownThread.start()
+                    self.mainTab.collect.setEnabled(False)
+                    self.mainTab.train.setEnabled(False)
+                    self.mainTab.test.setEnabled(False)
+
+                    # Reset tasks
+                    self.testThread.finished.connect(
+                        lambda: self.mainTab.collect.setEnabled(True)
+                    )
+                    self.testThread.finished.connect(
+                        lambda: self.mainTab.train.setEnabled(True)
+                    )
+                    self.testThread.finished.connect(
+                        lambda: self.mainTab.test.setEnabled(True)
+                    )
+                    self.testThread.finished.connect(
+                        lambda: self.mainTab.detection_label.clear()
+                    )
+                    self.testThread.finished.connect(
+                        lambda: self.mainTab.title_label.setVisible(True)
+                    )
         else:
             message = 'Port is not connected'
             QtWidgets.QMessageBox.warning(self, 'Warning', message)

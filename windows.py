@@ -76,7 +76,7 @@ class SessionData(QtWidgets.QDialog):
 
         self.subject_name.setReadOnly(True)
 
-        icon = QtGui.QIcon(config.resource_path('assets/icons/folder-open.png'))
+        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/folder-open.png'))
         self.open_subject_folder = QtWidgets.QToolButton()
         self.open_subject_folder.setIcon(icon)
         self.open_subject_folder.setAutoRaise(False)
@@ -129,7 +129,7 @@ class SessionModel(QtWidgets.QDialog):
 
         self.subject_name.setReadOnly(True)
 
-        icon = QtGui.QIcon(config.resource_path('assets/icons/folder-open.png'))
+        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/folder-open.png'))
         self.open_subject_folder = QtWidgets.QToolButton()
         self.open_subject_folder.setIcon(icon)
         self.open_subject_folder.setAutoRaise(False)
@@ -489,13 +489,51 @@ class TrainingDialog(QtWidgets.QDialog):
         self.resize(360, 120)
         self.setFixedSize(self.size())
 
+class TestingDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Tesing Patient')
+        
+        Qbtn = QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+
+        self.buttonBox = QtWidgets.QDialogButtonBox(Qbtn)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+        
+        self.active_label = QtWidgets.QLabel('Active Interval: ')
+        self.active_time = QtWidgets.QDoubleSpinBox()
+        self.active_time.setRange(0.5,3)
+        self.active_time.setValue(parent.active_time)
+
+        self.inactive_label = QtWidgets.QLabel('Inactive Interval: ')
+        self.inactive_time = QtWidgets.QDoubleSpinBox()
+        self.inactive_time.setRange(2,10)
+        self.inactive_time.setValue(parent.inactive_time)
+
+        self.fixed_mode = QtWidgets.QCheckBox('Set Fixed Mode?', self)
+        self.fixed_mode.setToolTip('Fixed mode will output the correct task every time')
+
+        layout = QtWidgets.QGridLayout()
+
+        layout.addWidget(self.fixed_mode, 0, 0, 1, 2)
+        layout.addWidget(self.active_label, 1, 0)
+        layout.addWidget(self.active_time, 1, 1)
+        layout.addWidget(self.inactive_label, 2, 0)
+        layout.addWidget(self.inactive_time, 2, 1)
+        layout.addWidget(self.buttonBox, 3, 0, 1, 2)
+
+        self.setLayout(layout)
+        self.show()
+        self.setFixedSize(self.size())
+
 class ExampleWin(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Getting Started")
         self.setFixedSize(900, 600)
 
-        id = QtGui.QFontDatabase.addApplicationFont(config.resource_path("assets/fonts/TitilliumWeb-Bold.ttf"))
+        id = QtGui.QFontDatabase.addApplicationFont(config.resource_path("dev/assets/fonts/TitilliumWeb-Bold.ttf"))
         families = QtGui.QFontDatabase.applicationFontFamilies(id)
 
         self.titleCard_title = QtWidgets.QLabel("Welcome to the Intention Detection System!", self)
@@ -503,7 +541,7 @@ class ExampleWin(QtWidgets.QMainWindow):
         self.titleCard_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.titleCard_title.setProperty('type', 5)
         
-        file = open(config.resource_path('assets/text/gettingStarted.txt'))
+        file = open(config.resource_path('dev/assets/text/gettingStarted.txt'))
         text = file.read()
         file.close()
 
@@ -536,7 +574,7 @@ class ExampleWin(QtWidgets.QMainWindow):
 
         self.task_label = QtWidgets.QLabel(self)
         self.task_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        tasksPixmap = QtGui.QPixmap(config.resource_path("assets/imgs/tasks.png"))
+        tasksPixmap = QtGui.QPixmap(config.resource_path("dev/assets/imgs/tasks.png"))
         self.task_label.setPixmap(tasksPixmap)  
 
         self.taskCard_layout = QtWidgets.QGridLayout()
@@ -551,7 +589,7 @@ class ExampleWin(QtWidgets.QMainWindow):
         self.demoCard_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.demoCard_title.setProperty('type', 5)
 
-        file = open(config.resource_path('assets/text/demoMsg.txt'))
+        file = open(config.resource_path('dev/assets/text/demoMsg.txt'))
         text = file.read()
         file.close()
         self.demo_description = QtWidgets.QLabel(text, self)
@@ -560,7 +598,7 @@ class ExampleWin(QtWidgets.QMainWindow):
 
         self.demo_label = QtWidgets.QLabel(self)
         self.demo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        demoPixmap = QtGui.QPixmap(config.resource_path("assets/imgs/demo.png"))
+        demoPixmap = QtGui.QPixmap(config.resource_path("dev/assets/imgs/demo.png"))
         self.demo_label.setPixmap(demoPixmap)
 
         self.demoCard_layout = QtWidgets.QGridLayout()
@@ -805,44 +843,84 @@ class AnalysisUI(QtWidgets.QWidget):
         self.layout_stack = QtWidgets.QStackedLayout()  # referenced in method
 
         self.CH1 = pg.PlotWidget(name='CH1')
-        self.CH1.setLabel('left', 'Voltage', units='mV')
-        self.CH1.setLabel('bottom', 'Time', units='s')
-        self.CH1.setTitle("CH1")
+        self.CH1.setLabels(title='CH1', left=('Voltage', 'V'), bottom=('Time', 's'))
+
+        self._ch1_task = pg.ViewBox()
+        self.CH1.scene().addItem(self._ch1_task)
+        self.CH1.getAxis('right').linkToView(self._ch1_task)
+        self._ch1_task.setXLink(self.CH1)
+        self.CH1.getAxis('right').setLabel('Task', color='#ff0000')
+        self.CH1.showAxis('right', show=False)
 
         self.CH2 = pg.PlotWidget(name="CH2")
-        self.CH2.setLabel('left', 'Voltage', units='mV')
-        self.CH2.setLabel('bottom', 'Time', units='s')
-        self.CH2.setTitle("CH2")
+        self.CH2.setLabels(title='CH2', left=('Voltage', 'V'), bottom=('Time', 's'))
+
+        self._ch2_task = pg.ViewBox()
+        self.CH2.scene().addItem(self._ch2_task)
+        self.CH2.getAxis('right').linkToView(self._ch2_task)
+        self._ch2_task.setXLink(self.CH2)
+        self.CH2.getAxis('right').setLabel('Task', color='#ff0000')
+        self.CH2.showAxis('right', show=False)
 
         self.CH3 = pg.PlotWidget(name='CH3')
-        self.CH3.setLabel('left', 'Voltage', units='mV')
-        self.CH3.setLabel('bottom', 'Time', units='s')
-        self.CH3.setTitle("CH3")
+        self.CH3.setLabels(title='CH3', left=('Voltage', 'V'), bottom=('Time', 's'))
+
+        self._ch3_task = pg.ViewBox()
+        self.CH3.scene().addItem(self._ch3_task)
+        self.CH3.getAxis('right').linkToView(self._ch3_task)
+        self._ch3_task.setXLink(self.CH3)
+        self.CH3.getAxis('right').setLabel('Task', color='#ff0000')
+        self.CH3.showAxis('right', show=False)
 
         self.CH4 = pg.PlotWidget(name='CH4')
-        self.CH4.setLabel('left', 'Voltage', units='mV')
-        self.CH4.setLabel('bottom', 'Time', units='s')
-        self.CH4.setTitle("CH4")
+        self.CH4.setLabels(title='CH4', left=('Voltage', 'V'), bottom=('Time', 's'))
+
+        self._ch4_task = pg.ViewBox()
+        self.CH4.scene().addItem(self._ch4_task)
+        self.CH4.getAxis('right').linkToView(self._ch4_task)
+        self._ch4_task.setXLink(self.CH4)
+        self.CH4.getAxis('right').setLabel('Task', color='#ff0000')
+        self.CH4.showAxis('right', show=False)
 
         self.CH5 = pg.PlotWidget(name="CH5")
-        self.CH5.setLabel('left', 'Voltage', units='mV')
-        self.CH5.setLabel('bottom', 'Time', units='s')
-        self.CH5.setTitle("CH5")
+        self.CH5.setLabels(title='CH5', left=('Voltage', 'V'), bottom=('Time', 's'))
+
+        self._ch5_task = pg.ViewBox()
+        self.CH5.scene().addItem(self._ch5_task)
+        self.CH5.getAxis('right').linkToView(self._ch5_task)
+        self._ch5_task.setXLink(self.CH5)
+        self.CH5.getAxis('right').setLabel('Task', color='#ff0000')
+        self.CH5.showAxis('right', show=False)
 
         self.CH6 = pg.PlotWidget(name='CH6')
-        self.CH6.setLabel('left', 'Voltage', units='mV')
-        self.CH6.setLabel('bottom', 'Time', units='s')
-        self.CH6.setTitle("CH6")
+        self.CH6.setLabels(title='CH6', left=('Voltage', 'V'), bottom=('Time', 's'))
+
+        self._ch6_task = pg.ViewBox()
+        self.CH6.scene().addItem(self._ch6_task)
+        self.CH6.getAxis('right').linkToView(self._ch6_task)
+        self._ch6_task.setXLink(self.CH6)
+        self.CH6.getAxis('right').setLabel('Task', color='#ff0000')
+        self.CH6.showAxis('right', show=False)
 
         self.CH7 = pg.PlotWidget(name='CH7')
-        self.CH7.setLabel('left', 'Voltage', units='mV')
-        self.CH7.setLabel('bottom', 'Time', units='s')
-        self.CH7.setTitle("CH7")
+        self.CH7.setLabels(title='CH7', left=('Voltage', 'V'), bottom=('Time', 's'))
+
+        self._ch7_task = pg.ViewBox()
+        self.CH7.scene().addItem(self._ch7_task)
+        self.CH7.getAxis('right').linkToView(self._ch7_task)
+        self._ch7_task.setXLink(self.CH7)
+        self.CH7.getAxis('right').setLabel('Task', color='#ff0000')
+        self.CH7.showAxis('right', show=False)
 
         self.CH8 = pg.PlotWidget(name='CH8')
-        self.CH8.setLabel('left', 'Voltage', units='mV')
-        self.CH8.setLabel('bottom', 'Time', units='s')
-        self.CH8.setTitle("CH8")
+        self.CH8.setLabels(title='CH8', left=('Voltage', 'V'), bottom=('Time', 's'))
+
+        self._ch8_task = pg.ViewBox()
+        self.CH8.scene().addItem(self._ch8_task)
+        self.CH8.getAxis('right').linkToView(self._ch8_task)
+        self._ch8_task.setXLink(self.CH8)
+        self.CH8.getAxis('right').setLabel('Task', color='#ff0000')
+        self.CH8.showAxis('right', show=False)
 
         layout_channels = QtWidgets.QGridLayout()
 
@@ -940,6 +1018,8 @@ class AnalysisUI(QtWidgets.QWidget):
         self.clear_all = QtWidgets.QPushButton('Clear all', self)
         self.display_all.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
         self.clear_all.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+        self.display_all.setEnabled(False)
+        self.clear_all.setEnabled(False)
 
         layout2 = QtWidgets.QGridLayout()
 
@@ -957,6 +1037,43 @@ class AnalysisUI(QtWidgets.QWidget):
         self.checks_frame = QtWidgets.QGroupBox('Channels')
         self.checks_frame.setLayout(layout2)
 
+        # Shift option
+        self.total_samples = QtWidgets.QLabel('Total Samples: 0', self)
+        self.down_samples = QtWidgets.QLabel('Downsampled: 0', self)
+        self.layer_task = QtWidgets.QCheckBox('Layer Task Over Channel?', self)
+        self.layer_task.setEnabled(False)
+
+        self.shift_label = QtWidgets.QLabel('Shift: ', self)
+        self.shift = QtWidgets.QDoubleSpinBox()
+        self.shift.setRange(0,5)
+        self.shift.setEnabled(False)
+        self.shift_unit_label = QtWidgets.QLabel('seconds', self)
+
+        self.clear_shift = QtWidgets.QPushButton('Clear', self)
+        self.clear_shift.setEnabled(False)
+        self.clear_shift.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+
+        self.set_shift = QtWidgets.QPushButton('Set Shift', self)
+        self.set_shift.setEnabled(False)
+        self.set_shift.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+
+        layout_shift_1 = QtWidgets.QHBoxLayout()
+        layout_shift_1.addWidget(self.clear_shift)
+        layout_shift_1.addWidget(self.set_shift)
+
+        layout_shift = QtWidgets.QGridLayout()
+        layout_shift.addWidget(self.layer_task, 0, 0, 1, 3)
+        layout_shift.addWidget(self.shift_label, 1, 0)
+        layout_shift.addWidget(self.shift, 1, 1)
+        layout_shift.addWidget(self.shift_unit_label, 1, 2)
+        layout_shift.addWidget(self.total_samples, 2, 0, 1, 3)
+        layout_shift.addWidget(self.down_samples, 3, 0, 1, 3)
+        layout_shift.addLayout(layout_shift_1, 4, 0, 1, 3)
+
+        self.shift_frame = QtWidgets.QGroupBox('Shift')
+        self.shift_frame.setLayout(layout_shift)
+
+        # Datatype visualization
         self.raw = QtWidgets.QRadioButton('RAW', self)
         self.raw.setProperty('type', 1)
         self.raw.setEnabled(False)
@@ -990,14 +1107,14 @@ class AnalysisUI(QtWidgets.QWidget):
         layout3 = QtWidgets.QGridLayout()
 
         layout3.addWidget(self.checks_frame, 0, 0)
-        layout3.addWidget(self.type_frame, 1, 0)
+        layout3.addWidget(self.shift_frame, 0, 1)
+        layout3.addWidget(self.type_frame, 1, 0, 1, 2)
 
         config = QtWidgets.QWidget()
         config.setLayout(layout3)
 
         #  Visualization Panel
-
-
+        
         # Model Loss and Accuracy tab
         self.model_acc_loss = FigureCanvas(Figure(figsize=(5, 5)))
         self._mal_fig = self.model_acc_loss.figure
@@ -1025,7 +1142,7 @@ class AnalysisUI(QtWidgets.QWidget):
         # self._tsne_cbar_fig.subplots_adjust(right=0.15)
         self._tsne_cbar_fig.set_tight_layout(True)
 
-        labels = ['O', 'C', 'TO', 'TP', 'BO', 'BC']
+        labels = ['R', 'O', 'C', 'TO', 'TP', 'BO', 'BC']
 
         self._tsne_cbar_fig.colorbar(mpl.cm.ScalarMappable(norm=utils.norm, cmap=mpl.cm.Spectral),
              cax=self._tsne_cbar_ax, orientation='vertical')
@@ -1096,7 +1213,7 @@ class MainUi(QtWidgets.QWidget):
         """Create the General page UI."""
         # Title label
         self.title_label = QtWidgets.QLabel('Intention Detection and Task Classification', self)
-        id = QtGui.QFontDatabase.addApplicationFont('assets/fonts/TitilliumWeb-Bold.ttf')
+        id = QtGui.QFontDatabase.addApplicationFont('dev/assets/fonts/TitilliumWeb-Bold.ttf')
         families = QtGui.QFontDatabase.applicationFontFamilies(id)
         self.title_label.setFont(QtGui.QFont(families[0], 48))
         self.title_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -1131,7 +1248,7 @@ class MainUi(QtWidgets.QWidget):
         self.interrupt.setHidden(True)
         self.interrupt.setProperty('type', 3)
         # Display Instructions
-        file = open(config.resource_path('assets/text/mainInstructions.txt'))
+        file = open(config.resource_path('dev/assets/text/mainInstructions.txt'))
         text = file.read()
         file.close()
         self.instruct = QtWidgets.QPlainTextEdit(self)
@@ -1191,7 +1308,7 @@ class MainUi(QtWidgets.QWidget):
         self.channels_frame.setLayout(layout_channels)
 
         # Status Labels
-        icon = QtGui.QIcon(config.resource_path('assets/icons/subject.png'))
+        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/subject.png'))
         self.subject_icon = QtWidgets.QToolButton()
         self.subject_icon.setIcon(icon)
         self.subject_icon.setAutoRaise(False)
@@ -1202,7 +1319,7 @@ class MainUi(QtWidgets.QWidget):
         self.subject_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.subject_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('assets/icons/table.png'))
+        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/table.png'))
         self.data_icon = QtWidgets.QToolButton()
         self.data_icon.setIcon(icon)
         self.data_icon.setAutoRaise(False)
@@ -1213,7 +1330,7 @@ class MainUi(QtWidgets.QWidget):
         self.data_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.data_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('assets/icons/folder-open.png'))
+        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/folder-open.png'))
         self.model_icon = QtWidgets.QToolButton()
         self.model_icon.setIcon(icon)
         self.model_icon.setAutoRaise(False)
@@ -1224,7 +1341,7 @@ class MainUi(QtWidgets.QWidget):
         self.model_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.model_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('assets/icons/time.png'))
+        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/time.png'))
         self.time_icon = QtWidgets.QToolButton()
         self.time_icon.setIcon(icon)
         self.time_icon.setAutoRaise(False)
@@ -1235,19 +1352,19 @@ class MainUi(QtWidgets.QWidget):
         self.time_interval_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.time_interval_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('assets/icons/data-transfer.png'))
+        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/data-transfer.png'))
                            
         self.mindrove_icon = QtWidgets.QToolButton()
         self.mindrove_icon.setIcon(icon)
         self.mindrove_icon.setAutoRaise(False)
-        newTip = "Check status of Mindrove"
+        newTip = "Verify status of Mindrove"
         self.mindrove_icon.setToolTip(newTip)
 
         self.mindrove_label = QtWidgets.QLabel('MindRove: ', self)
         self.mindrove_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.mindrove_label.setProperty('type', 1)
 
-        icon = QtGui.QIcon(config.resource_path('assets/icons/ethernet.png'))
+        icon = QtGui.QIcon(config.resource_path('dev/assets/icons/ethernet.png'))
         self.port_icon = QtWidgets.QToolButton()
         self.port_icon.setIcon(icon)
         self.port_icon.setAutoRaise(False)
@@ -1322,7 +1439,7 @@ class MainUi(QtWidgets.QWidget):
         self.time_interval.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.time_interval.setProperty('type', 2)
 
-        self.mindrove_status = QtWidgets.QLabel('', self)
+        self.mindrove_status = QtWidgets.QLabel('Not Verified', self)
         self.mindrove_status.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.mindrove_status.setProperty('type', 2)
 
