@@ -39,7 +39,7 @@ import windows
 # Some icons by Yusuke Kamiyamane. Licensed under a Creative Commons Attribution 3.0 License.
 # Some icons from freeicons.io
 
-VERSION = '0.5.0'
+VERSION = '0.5.1'
 
 myappid = utils.resource_path('IDSIcon.ico') # arbitrary string
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
