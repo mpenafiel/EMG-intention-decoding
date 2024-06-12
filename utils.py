@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure as Fig
 import matplotlib as mpl
 from enum import Enum
-import config
 
 class Task(Enum):
     REST = 0
@@ -94,7 +93,7 @@ def plot_confusion_matrix(fig, ax, cm, classes,
 
 def documentation():
     # Open documentation about operation
-    webbrowser.open(config.resource_path("dev/assets/docs/IDSystem Documentation v0.4.2.pdf"))
+    webbrowser.open(resource_path("dev/assets/docs/IDSystem Documentation v0.4.2.pdf"))
 
 # intersperse a list with a given value... i.e. 0 or rest
 def intersperse(lst, item):
