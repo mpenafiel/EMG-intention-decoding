@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure as Fig
 import matplotlib as mpl
 from enum import Enum
-import config
 
 class Task(Enum):
     REST = 0
@@ -58,7 +57,7 @@ colors_list = [cmap.__call__(norm(0)),
                cmap.__call__(norm(2)), 
                cmap.__call__(norm(3)), 
                cmap.__call__(norm(4)), 
-               cmap.__call__(norm(5)),]
+               cmap.__call__(norm(5))]
 cmap_discrete = np.array(object=colors_list, dtype=np.float64)
 
 def plot_confusion_matrix(fig, ax, cm, classes,
@@ -93,7 +92,7 @@ def plot_confusion_matrix(fig, ax, cm, classes,
 
 def documentation():
     # Open documentation about operation
-    webbrowser.open(config.resource_path("assets/docs/HoH EMG Hand Documentation Version 4.0.pdf"))
+    webbrowser.open(resource_path("assets/docs/IDSystem Documentation v0.4.2.pdf"))
 
 # intersperse a list with a given value... i.e. 0 or rest
 def intersperse(lst, item):
@@ -119,3 +118,20 @@ def window_rms(a, window_size):
 def get_one_hot(targets, nb_classes):
     res = np.eye(nb_classes)[np.array(targets).reshape(-1)]
     return res.reshape(list(targets.shape) + [nb_classes])
+
+def perform_labels_windowing(label_examples, classes, window_size=50, size_non_overlap=10):
+    # Preallocate memory
+    tasks = np.max(label_examples)
+    print(f'Number of Tasks: {tasks}')
+    
+    formated_labels = np.zeros((0, tasks+1))
+    window_num = 0
+    examples = label_examples
+    while len(examples) > window_size:
+        window = examples[:window_size]
+        featured_label = get_one_hot(np.argmax(np.bincount(window)), classes)[:, np.newaxis]
+        formated_labels = np.append(formated_labels, np.array(featured_label).transpose(), axis=0)
+        examples = examples[size_non_overlap:] # slide view to the right by specified increment
+        window_num += 1
+    print(f'Number of Computed Windows: {window_num}')
+    return formated_labels
