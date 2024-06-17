@@ -39,7 +39,7 @@ import windows
 # Some icons by Yusuke Kamiyamane. Licensed under a Creative Commons Attribution 3.0 License.
 # Some icons from freeicons.io
 
-VERSION = '0.5.1'
+VERSION = '0.5.2'
 
 myappid = utils.resource_path('IDSIcon.ico') # arbitrary string
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
@@ -521,6 +521,13 @@ class TestWorker(QtCore.QObject):
             self.finished.emit()
             error = (0, msg)
             self.error.emit(error)
+        except serial.SerialException:
+            msg = 'The device does not recognize the command. Verify MindRove is connected and recording data'
+            self.updateImg.emit(-1)
+            self.board.release_session()
+            self.finished.emit()
+            error = (1, msg)
+            self.error.emit(error)
         self.finished.emit()
 
     def run(self):
@@ -576,6 +583,7 @@ class PoseApp(QtWidgets.QMainWindow):
         self.board = createBoard()
         self.fs = BoardShim.get_sampling_rate(BoardIds.MINDROVE_WIFI_BOARD.value)
         self.ports = None
+        self.sp = None
 
         self.setWindowIcon(QtGui.QIcon('IDSIcon.png'))
         self.setWindowTitle("Intention Detection")
@@ -682,6 +690,10 @@ class PoseApp(QtWidgets.QMainWindow):
         self.saveDataAsAction = QtGui.QAction("Save Data as...", self)
         self.saveModelAction = QtGui.QAction("Save Model", self)
         self.saveModelAsAction = QtGui.QAction("Save Model as...", self)
+        self.saveModelAccLossAction = QtGui.QAction("Save model accuracy/loss", self)
+        self.saveModelCMAction = QtGui.QAction("Save model confusion matrix", self)
+        self.saveModeltsneAction = QtGui.QAction("Save model t-sne", self)
+        self.saveAllModelFiguresAction = QtGui.QAction("Save all model figures", self)
 
         self.clearDataAction = QtGui.QAction("Clear Data", self)
         self.clearModelAction = QtGui.QAction("Clear Model", self)
@@ -708,6 +720,10 @@ class PoseApp(QtWidgets.QMainWindow):
         self.saveDataAsAction.triggered.connect(lambda: self.save_data_from_menu(saveAs=True))
         self.saveModelAction.triggered.connect(lambda: self.save_model_from_menu(saveAs=False))
         self.saveModelAsAction.triggered.connect(lambda: self.save_model_from_menu(saveAs=True))
+        self.saveModelAccLossAction.triggered.connect(self.save_model_acc_loss_figures)
+        self.saveModelCMAction.triggered.connect(self.save_model_cm_figures)
+        self.saveModeltsneAction.triggered.connect(self.save_model_tsne_figures)
+        self.saveAllModelFiguresAction.triggered.connect(self.save_all_model_figures)
         self.clearDataAction.triggered.connect(self.clear_data)
         self.clearModelAction.triggered.connect(self.clear_model)
         self.clearAllAction.triggered.connect(self.clear_all)
@@ -750,6 +766,11 @@ class PoseApp(QtWidgets.QMainWindow):
         modelMenu = saveMenu.addMenu("Model")
         modelMenu.addAction(self.saveModelAction)
         modelMenu.addAction(self.saveModelAsAction)
+        figureMenu = modelMenu.addMenu("Save Figures")
+        figureMenu.addAction(self.saveModelAccLossAction)
+        figureMenu.addAction(self.saveModelCMAction)
+        figureMenu.addAction(self.saveModeltsneAction)
+        figureMenu.addAction(self.saveAllModelFiguresAction)
         # Clear menu
         clearMenu = fileMenu.addMenu("Clear")
         clearMenu.addAction(self.clearDataAction)
@@ -850,7 +871,7 @@ class PoseApp(QtWidgets.QMainWindow):
             plot_widget.clear()
             plot_widget.showAxis('right', show=False)
         for viewbox in viewboxes:
-            viewbox.clear()            
+            viewbox.clear()
 
     def clear_channel_plots(self):
         for channel in self.channel_checkbox.values():
@@ -866,6 +887,14 @@ class PoseApp(QtWidgets.QMainWindow):
         self.model = None
         self.mainTab.model_status.clear()
         self.mainTab.model_status.setToolTip(str())
+        # Remove t-sne scatter plot
+        if self.sp in self.analysisTab.t_sne3d.items:
+            self.analysisTab.t_sne3d.removeItem(self.sp)
+        self.analysisTab._mal_ax.cla()
+        self.analysisTab._mal_ax2.cla()
+        self.analysisTab._cm_ax.cla()
+        self.analysisTab._mal_fig.canvas.draw()
+        self.analysisTab._cm_fig.canvas.draw()
     
     def clear_shift(self):
         self.selected_data = self.train_data
@@ -953,6 +982,8 @@ class PoseApp(QtWidgets.QMainWindow):
                     QtWidgets.QMessageBox.information(self, 'Help', message)
                     continue
             else:
+                message = 'User cancelled'
+                self.statusbar.showMessage(message, 3000)
                 break
 
     def create_random_task_sequence(self):
@@ -1099,7 +1130,7 @@ class PoseApp(QtWidgets.QMainWindow):
                 self.analysisTab.filt.setEnabled(True)
                 self.analysisTab.rms.setEnabled(True)
                 self.analysisTab.norm.setEnabled(True)
-                self.analysisTab.norm.setChecked(True)  # default display is normalized data
+                self.analysisTab.filt.setChecked(True)  # default display is filtered data
                 # Display Shift Functions
                 self.analysisTab.clear_shift.setEnabled(True)
                 self.analysisTab.set_shift.setEnabled(True)
@@ -1260,6 +1291,7 @@ class PoseApp(QtWidgets.QMainWindow):
         cm = event[0]
         classes = event[1]
         utils.plot_confusion_matrix(fig=self.analysisTab._cm_fig, ax=self.analysisTab._cm_ax, cm=cm, classes=classes)
+        self.analysisTab._cm_fig.canvas.draw()
         
     
     def display_model_history(self, event):
@@ -1274,13 +1306,14 @@ class PoseApp(QtWidgets.QMainWindow):
         # Create Legend
         self.analysisTab._mal_ax.legend(['Train - Accuracy', 'Test - Accuracy'], loc='upper left')
         self.analysisTab._mal_ax2.legend(['Train - Loss', 'Test - Loss'], loc='lower left')
+        self.analysisTab._mal_fig.canvas.draw()
 
     def display_tSNE(self, event):
         # Event is an Nx6 matrix where columns 1-3 are the spatial coordinates and columns 4-6 are the RGB values of the point
         tsne3d = event[:,:3]
         colors = event[:,3:]
-        sp = gl.GLScatterPlotItem(pos=tsne3d, color=colors, size=0.25, pxMode=False)
-        self.analysisTab.t_sne3d.addItem(sp)
+        self.sp = gl.GLScatterPlotItem(pos=tsne3d, color=colors, size=0.25, pxMode=False)
+        self.analysisTab.t_sne3d.addItem(self.sp)
 
     def set_datatype(self):
         button = self.analysisTab.data_group.checkedButton()
@@ -1386,20 +1419,22 @@ class PoseApp(QtWidgets.QMainWindow):
             dlg = windows.SessionData(self)
             if dlg.exec():
                 if dlg.subject_name.text():
+                    self.mainTab.subject.setText(dlg.subject_name.text())
                     if dlg.set_fname.isChecked():
                         [fpath, _] = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', dlg.subject_path, "CSV files(*.csv)")
                         fpath_raw = fpath[:-4] + "_RAW.csv" # include a raw tag identifier
                         fpath_filt = fpath[:-4] + '_FILT.csv'
                         fpath_rms = fpath[:-4] + "_RMS.csv"
+                        fpath_norm = fpath[:-4] + "_NORM.csv"
                     else:
-                        fpath = f"{dlg.subject_path}/emg_NORM{time_now}.csv"
+                        fpath_norm = f"{dlg.subject_path}/emg_NORM{time_now}.csv"
                         fpath_raw = f"{dlg.subject_path}/emg_RAW{time_now}.csv"
                         fpath_filt = f"{dlg.subject_path}/emg_FILT{time_now}.csv"
                         fpath_rms = f"{dlg.subject_path}/emg_RMS{time_now}.csv"
                     self.raw_data.to_csv(fpath_raw, index=False)
                     self.filt_data.to_csv(fpath_filt, index=False)
                     self.rms_data.to_csv(fpath_rms, index=False)
-                    self.train_data.to_csv(fpath, index=False)
+                    self.norm_data.to_csv(fpath_norm, index=False)
 
                     # Display Shift Functions
                     self.analysisTab.clear_shift.setEnabled(True)
@@ -1409,9 +1444,9 @@ class PoseApp(QtWidgets.QMainWindow):
                     self.analysisTab.total_samples.setText(f'Total Samples: {self.train_data.shape[0]}')
 
                     # Update GUI
-                    message = f'Successfully collected data and saved to {fpath}!'
-                    file_name = os.path.basename(fpath)
-                    self.mainTab.data_status.setToolTip(str(fpath))
+                    message = f'Successfully collected data and saved to {fpath_filt}!'
+                    file_name = os.path.basename(fpath_filt)
+                    self.mainTab.data_status.setToolTip(str(fpath_filt))
                     self.statusbar.showMessage(message, 3000)
                     self.mainTab.data_status.setText(file_name)
                     
@@ -1419,7 +1454,7 @@ class PoseApp(QtWidgets.QMainWindow):
                     self.analysisTab.filt.setEnabled(True)
                     self.analysisTab.rms.setEnabled(True)
                     self.analysisTab.norm.setEnabled(True)
-                    self.analysisTab.norm.setChecked(True)  # default display is noramlized rms data
+                    self.analysisTab.filt.setChecked(True)  # default display is filtered data
                     self.display_data(self.train_data)
                     break
                 else:
@@ -1437,9 +1472,12 @@ class PoseApp(QtWidgets.QMainWindow):
                     [fpath, _] = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', self.subject_path, "CSV files(*.csv)")
                     if fpath:
                         fpath_raw = fpath[:-4] + "_RAW.csv" # include a raw tag identifier
+                        fpath_filt = fpath[:-4] + "_FILT.csv"
                         fpath_rms = fpath[:-4] + "_RMS.csv"
                         if self.raw_data is not None:
                             self.raw_data.to_csv(fpath_raw, index=False)
+                        if self.filt_data is not None:
+                            self.filt_data.to_csv(fpath_filt, index=False)
                         if self.rms_data is not None:
                             self.rms_data.to_csv(fpath_rms, index=False)
                         self.train_data.to_csv(fpath, index=False)
@@ -1457,15 +1495,19 @@ class PoseApp(QtWidgets.QMainWindow):
                     if self.mainTab.data_status.text():
                         fpath = f"{self.subject_path}/{self.mainTab.data_status.text()}.csv"
                         fpath_raw = f"{self.subject_path}/{self.mainTab.data_status.text()}_RAW.csv"
+                        fpath_filt = f"{self.subject_path}/{self.mainTab.data_status.text()}_FILT.csv"
                         fpath_rms = f"{self.subject_path}/{self.mainTab.data_status.text()}_RMS.csv"
                         if self.raw_data is not None:
                             self.raw_data.to_csv(fpath_raw, index=False)
                         if self.rms_data is not None:
                             self.rms_data.to_csv(fpath_rms, index=False)
+                        if self.filt_data is not None:
+                            self.filt_data.to_csv(fpath_filt, index=False)
                         self.train_data.to_csv(fpath, index=False)
                     else:
                         fpath = f"{self.subject_path}/emg_NORM{self.data_time}.csv"
                         fpath_raw = f"{self.subject_path}/emg_RAW{self.data_time}.csv"
+                        fpath_filt = f"{self.subject_path}/emg_FILT{self.data_time}.csv"
                         fpath_rms = f"{self.subject_path}/emg_RMS{self.data_time}.csv"
 
                     # Update GUI
@@ -1504,6 +1546,7 @@ class PoseApp(QtWidgets.QMainWindow):
             if dlg.exec():
                 if dlg.subject_name.text():
                     self.subject_path = dlg.subject_path
+                    self.mainTab.subject.setText(dlg.subject_name.text())
                     if dlg.model_name.text():
                         model_name = f'{dlg.model_name.text()}.keras'
 
@@ -1535,6 +1578,113 @@ class PoseApp(QtWidgets.QMainWindow):
                 message = 'User cancelled'
                 self.statusbar.showMessage(message, 3000)
                 break
+
+        self.saveModelAccLossAction.triggered.connect(self.save_model_acc_loss_figures)
+        self.saveModelCMAction.triggered.connect(self.save_model_cm_figures)
+        self.saveModeltsneAction.triggered.connect(self.save_model_tsne_figures)
+        self.saveAllModelFiguresAction.triggered.connect(self.save_all_model_figures)
+
+    def save_model_acc_loss_figures(self):
+        if self.model is not None:
+            figure_dir_path = f"{self.subject_path}/Figures"
+            model_name = self.mainTab.model_status.text().replace('.keras', '')
+            if os.path.exists(figure_dir_path):
+                model_acc_loss_path = f'{figure_dir_path}/{model_name}_acc_loss.png'
+            else:
+                os.mkdir(figure_dir_path)
+                model_acc_loss_path = f'{figure_dir_path}/{model_name}_acc_loss.png'
+
+            model_acc_loss_path.replace("\\", "/")    
+
+            self.analysisTab._mal_fig.savefig(model_acc_loss_path, pad_inches='tight')
+            message = f'Figure saved to {figure_dir_path}'
+            self.statusbar.showMessage(message, 3000)
+        else:
+            message = 'Train a model to save it'
+            QtWidgets.QMessageBox.information(self, 'Help', message)
+
+    def save_model_cm_figures(self):
+        if self.model is not None:
+            figure_dir_path = f"{self.subject_path}/Figures"
+            model_name = self.mainTab.model_status.text().replace('.keras', '')
+            if os.path.exists(figure_dir_path):
+                model_cm_path = f'{figure_dir_path}/{model_name}_cm.png'
+            else:
+                os.mkdir(figure_dir_path)
+                model_cm_path = f'{figure_dir_path}/{model_name}_cm.png'
+
+            model_cm_path.replace("\\", "/")    
+
+            self.analysisTab._cm_fig.savefig(model_cm_path, pad_inches='tight')
+            message = f'Figure saved to {figure_dir_path}'
+            self.statusbar.showMessage(message, 3000)
+        else:
+            message = 'Train a model to save it'
+            QtWidgets.QMessageBox.information(self, 'Help', message)
+
+    def save_model_tsne_figures(self):
+        if self.model is not None:
+            figure_dir_path = f"{self.subject_path}/Figures"
+            model_name = self.mainTab.model_status.text().replace('.keras', '')
+            if os.path.exists(figure_dir_path):
+                model_tsne3d_path = f'{figure_dir_path}/{model_name}_tsne_3d.png'
+                tsne_3d_cb_path = f'{figure_dir_path}/tsne_colorbar.png'
+            else:
+                os.mkdir(figure_dir_path)
+                model_tsne3d_path = f'{figure_dir_path}/{model_name}_tsne_3d.png'
+                tsne_3d_cb_path = f'{figure_dir_path}/tsne_colorbar.png'
+
+            model_tsne3d_path.replace("\\", "/")
+            tsne_3d_cb_path.replace("\\", "/")
+            
+            try:
+                d = self.analysisTab.t_sne3d.renderToArray((1000, 1000))
+                pg.makeQImage(d).save(model_tsne3d_path)
+            except:
+                message = 'Unable to render t-SNE from current view. Zoom out so all points are in view.'
+                QtWidgets.QMessageBox.warning(self, 'Warning', message)
+            message = f'Figure saved to {figure_dir_path}'
+            self.statusbar.showMessage(message, 3000)
+        else:
+            message = 'Train a model to save it'
+            QtWidgets.QMessageBox.information(self, 'Help', message)
+
+    def save_all_model_figures(self):
+        if self.model is not None:
+            figure_dir_path = f"{self.subject_path}/Figures"
+            model_name = self.mainTab.model_status.text().replace('.keras', '')
+            if os.path.exists(figure_dir_path):
+                model_acc_loss_path = f'{figure_dir_path}/{model_name}_acc_loss.png'
+                model_cm_path = f'{figure_dir_path}/{model_name}_cm.png'
+                model_tsne3d_path = f'{figure_dir_path}/{model_name}_tsne_3d.png'
+                tsne_3d_cb_path = f'{figure_dir_path}/tsne_colorbar.png'
+            else:
+                os.mkdir(figure_dir_path)
+                model_acc_loss_path = f'{figure_dir_path}/{model_name}_acc_loss.png'
+                model_cm_path = f'{figure_dir_path}/{model_name}_cm.png'
+                model_tsne3d_path = f'{figure_dir_path}/{model_name}_tsne_3d.png'
+                tsne_3d_cb_path = f'{figure_dir_path}/tsne_colorbar.png'
+
+            model_acc_loss_path.replace("\\", "/")    
+            model_cm_path.replace("\\", "/")    
+            model_tsne3d_path.replace("\\", "/")    
+            tsne_3d_cb_path.replace("\\", "/")    
+
+            self.analysisTab._mal_fig.savefig(model_acc_loss_path, pad_inches='tight')
+            self.analysisTab._cm_fig.savefig(model_cm_path, pad_inches='tight')
+            try:
+                d = self.analysisTab.t_sne3d.renderToArray((1000, 1000))
+                pg.makeQImage(d).save(model_tsne3d_path)
+                self.analysisTab._tsne_cbar_fig.savefig(tsne_3d_cb_path, pad_inches='tight')
+            except AttributeError:
+                message = 'Unable to render t-SNE from current view. Zoom out so all points are in view.'
+                QtWidgets.QMessageBox.warning(self, 'Warning', message)
+            message = f'Figures saved to {figure_dir_path}'
+            self.statusbar.showMessage(message, 3000)
+        else:
+            message = 'Train a model to save it'
+            QtWidgets.QMessageBox.information(self, 'Help', message)
+
 
     def time_progress(self, event):
         self.mainTab.countdown_label.setText(f"Beginning in: {event}")

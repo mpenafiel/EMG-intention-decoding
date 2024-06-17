@@ -1,5 +1,5 @@
 # EMG Task Classification and Intention Detection
-**Version**: 0.5.1
+**Version**: 0.5.2
 
 ### Overview
 The goal of this project is to implement a system that leverages [A Framework of Temporal-Spatial Descriptors-Based Feature Extraction proposed by Rami Kushabi](https://ieeexplore.ieee.org/document/7886279). The framework is light enough to be deployed in real-time decoding, and processes EMG recorded from the low-end, wearable MindRove armband, which has 8 channels and a 500Hz sampling rate.

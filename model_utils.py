@@ -8,6 +8,9 @@ VAL_BATCH_SIZE = 30
 # From Khushaba, R. N., A. H. Al-Timemy, A. Al-Ani, and A. Al-Jumaily. "A Framework of Temporal-Spatial Descriptors-Based Feature Extraction 
 # for Improved Myoelectric Pattern Recognition." Ieee Transactions on Neural Systems and Rehabilitation Engineering 25, no. 10 (2017): 1821-31. 
 
+# Copyright (c) 2017, Rami Khushaba 
+# All rights reserved.
+
 # Root squared zero order moment normalized  
 # Equation (2) and (6) with lambda = 0.1
 def compute_m0_rms(vector):
